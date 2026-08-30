@@ -1,0 +1,16 @@
+{
+  "name": "com.kf.gitui.editor",
+  "references": [
+    "com.spoiledcat.git"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": []
+}

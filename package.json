@@ -1,0 +1,19 @@
+{
+  "name": "com.kf.gitui",
+  "displayName": "Unity Git Better GUI",
+  "version": "0.1.0-preview",
+  "unity": "2021.3",
+  "description": "JetBrains-quality Git tool window for Unity Editor: three-pane layout (graph | file tree | commit details), built on com.spoiledcat.git.api.",
+  "license": "MIT",
+  "keywords": [
+    "git",
+    "vcs",
+    "source-control",
+    "tool-window"
+  ],
+  "author": {
+    "name": "VRChatCN-Kipfel",
+    "url": "https://github.com/VRChatCN-Kipfel"
+  },
+  "dependencies": {}
+}
