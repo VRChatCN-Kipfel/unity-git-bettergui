@@ -1,7 +1,8 @@
 {
   "name": "com.kf.gitui.editor",
   "references": [
-    "com.spoiledcat.git"
+    "com.spoiledcat.git",
+    "Unity.Editor.Tasks"
   ],
   "includePlatforms": [
     "Editor"
