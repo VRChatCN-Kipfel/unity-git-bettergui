@@ -119,7 +119,7 @@ namespace KF.GitUI
             catch { return ""; }
         }
 
-        /// <summary>加载提交历史（含 parents 全量 + 文件变更列表）。</summary>
+        /// <summary>加载提交历史（含 parents 全量 + 文件变更列表），返回前强制拓扑序。</summary>
         public List<GitLogEntry> LoadHistory(int numberOfCommits = 0)
         {
             var task = new GitLogTask(platform, new GitObjectFactory(environment), null, numberOfCommits, CancellationToken.None)
@@ -127,6 +127,55 @@ namespace KF.GitUI
             var result = task.RunSynchronously();
             if (!task.Successful || result == null)
                 throw new InvalidOperationException("git log failed: " + task.Errors);
+            return EnsureTopologicalOrder(result);
+        }
+
+        /// <summary>
+        /// 拓扑序兜底：git log 默认按日期排序，时间戳相同时可能是非拓扑序（子出现在父上方），
+        /// 引擎（EdgesInRow/泳道 DFS/simple 链）假定"父必在行下方"。这里稳定地重排为 子先父后：
+        /// 一个条目可出队当且仅当其"窗口内的所有子"都已出队（子=引用本提交为父的条目）；
+        /// 窗口外的子忽略。输入已拓扑时输出与原序一致。
+        /// </summary>
+        private static List<GitLogEntry> EnsureTopologicalOrder(List<GitLogEntry> entries)
+        {
+            if (entries.Count <= 1) return entries;
+            var index = new Dictionary<string, int>();
+            for (var i = 0; i < entries.Count; i++) index[entries[i].CommitID] = i;
+
+            // childSets[i]：窗口内以 i 为父的条目号
+            var childSets = new List<List<int>>(entries.Count);
+            for (var i = 0; i < entries.Count; i++) childSets.Add(new List<int>());
+            for (var c = 0; c < entries.Count; c++)
+            {
+                var parents = entries[c].Parents;
+                if (parents == null) continue;
+                foreach (var p in parents)
+                    if (index.TryGetValue(p, out var pi) && pi != c)
+                        childSets[pi].Add(c);
+            }
+
+            var used = new bool[entries.Count];
+            var result = new List<GitLogEntry>(entries.Count);
+            var remaining = entries.Count;
+            while (remaining > 0)
+            {
+                var picked = -1;
+                for (var i = 0; i < entries.Count; i++)
+                {
+                    if (used[i]) continue;
+                    var ready = true;
+                    foreach (var c in childSets[i])
+                        if (!used[c]) { ready = false; break; }
+                    if (ready) { picked = i; break; }
+                }
+                if (picked == -1) // 环（异常数据）：取第一个未放置，防死循环
+                    for (var i = 0; i < entries.Count; i++)
+                        if (!used[i]) { picked = i; break; }
+
+                used[picked] = true;
+                result.Add(entries[picked]);
+                remaining--;
+            }
             return result;
         }
 
