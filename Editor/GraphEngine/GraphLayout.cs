@@ -23,6 +23,9 @@ namespace KF.GitUI
         /// <summary>泳道数上限：线由 head 定义，泳道槽位可以多于线（回溯死路会开新槽）。</summary>
         public int LaneCount => headNodes.Count;
 
+        /// <summary>head 节点列表（按优先级：新→旧）。</summary>
+        public IReadOnlyList<int> HeadNodes => headNodes;
+
         /// <summary>泳道 -> 代表 head（JetBrains GraphLayoutImpl.getHeadOrder 钳制语义：
         /// 无此泳道的槽位回退到最近 head）。上色/命名用之。</summary>
         public int GetHeadNodeIndexForLane(int lane)

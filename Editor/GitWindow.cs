@@ -9,17 +9,19 @@ using Unity.VersionControl.Git;
 namespace KF.GitUI
 {
     /// <summary>
-    /// unity-git-bettergui 主窗口：三栏布局 + 真实提交数据接入。
-    ///   左（图谱区）| 右：上（文件/变更树占位）+ 下（提交详情占位）
-    /// 本阶段：GitSession 加载真实提交历史，左侧列表展示 commit 摘要（图谱自绘在下一阶段）。
+    /// unity-git-bettergui 主窗口：三栏布局 + JetBrains 管线图谱。
+    ///   左（图谱表格：图谱+提交消息同行同格，甬道对应）| 右：上（改动文件列表）+ 下（提交详情）
+    /// 图谱管线：GitLogTask -> PermanentLinearGraph(CSR+隐式链) -> GraphLayout(head 栈式 DFS 泳道)
+    ///   -> EdgesInRow(逐行在途边) -> RowPrinter(行内元素排序+打印元素) -> GraphTable 自绘。
     /// </summary>
     public class GitWindow : EditorWindow
     {
         private GitSession session;
         private List<GitLogEntry> logEntries = new List<GitLogEntry>();
-        private CommitGraphElement graph;
+        private GraphTable graphTable;
         private Label graphStatus;
-        private ScrollView commitList;
+        private ScrollView changesList;
+        private Label detailText;
 
         [MenuItem("Window/Git/Git Better GUI (wip)")]
         public static void Open()
@@ -32,7 +34,9 @@ namespace KF.GitUI
 
         /// <summary>
         /// 批处理冒烟测试：-executeMethod KF.GitUI.GitWindow.SmokeTest
-        /// 验证：三栏布局 + GitSession 装配 + 真实提交加载。
+        /// 验证：三栏布局 + 引擎（泳道/逐行边/行内元素）+ 真实提交加载。
+        /// 测试仓库（9 提交，git log 按日期排序）：r0 810e7c4(merge y) r1 58c902b(merge x)
+        ///   r2 8f7a1f9 r3 ca9b7f8 r4 cbeacbf r5 c3ce8fb r6 3964f75 r7 f908745 r8 e91cc21
         /// </summary>
         public static void SmokeTest()
         {
@@ -46,52 +50,56 @@ namespace KF.GitUI
             {
                 var log = s.LoadHistory(200);
                 if (log.Count == 0) throw new System.Exception("SMOKE FAIL: no commits parsed");
+                if (log[0].ShortID != "810e7c4") throw new System.Exception("SMOKE FAIL: head != 810e7c4");
 
-                // 图谱布局断言（测试仓库:9 提交,2 merge,总边 2*2+6*1=10）
-                var graph = new CommitGraphElement();
-                graph.SetData(log);
-                var (rows, edges, headShort, mergeParents) = graph.LayoutInfo;
-                if (rows != 9) throw new System.Exception($"SMOKE FAIL: rows={rows} expect 9");
-                if (edges != 10) throw new System.Exception($"SMOKE FAIL: edges={edges} expect 10");
-                if (headShort != "810e7c4") throw new System.Exception($"SMOKE FAIL: head={headShort} expect 810e7c4");
-                if (mergeParents != 2) throw new System.Exception($"SMOKE FAIL: head parents={mergeParents} expect 2");
-
-                // ---- 引擎层（JetBrains 管线移植）冒烟：PermanentLinearGraph + GraphLayout 泳道 ----
-                // 期望泳道（按 GraphLayoutBuilder 栈式 DFS 手算，与 JetBrains layoutBuilder 测试同语义）：
-                // main 线与两条 feature 分支各占一泳道 -> [0,0,2,0,1,1,0,0,0]，LaneCount=3，唯一 head=row0
                 var commitIndex = new Dictionary<string, int>();
                 for (var i = 0; i < log.Count; i++) commitIndex[log[i].CommitID] = i;
+
+                // 1) 永久图 + 泳道（JetBrains 语义，见引擎注释）
                 var pGraph = PermanentLinearGraph.Build(log, commitIndex);
                 var layout = GraphLayout.Build(pGraph);
                 var expectedLanes = new[] { 0, 0, 2, 0, 1, 1, 0, 0, 0 };
                 var lanes = new int[pGraph.NodesCount];
                 for (var i = 0; i < pGraph.NodesCount; i++) lanes[i] = layout.GetLayoutIndex(i);
                 if (string.Join(",", lanes) != string.Join(",", expectedLanes))
-                {
-                    // 不匹配时输出对账信息（父/隐式标记/泳道）
-                    var dbg = new System.Text.StringBuilder("SMOKE FAIL: engine lanes=[" + string.Join(",", lanes) + "] expect [0,0,2,0,1,1,0,0,0]\n");
-                    for (var i = 0; i < pGraph.NodesCount; i++)
-                        dbg.AppendLine($"row{i} {log[i].ShortID}: parents=[{string.Join(",", pGraph.GetParentNodes(i))}] simple={pGraph.IsSimpleNode(i)} lane={lanes[i]}");
-                    throw new System.Exception(dbg.ToString());
-                }
-                // JetBrains 语义：线(head)数与泳道槽位数解耦。本仓库唯一 head=row0（main 尖），
-                // 但 DFS 回溯为 feature/x、feature/y 各开出新槽 -> 槽位 0..2。
-                if (layout.LaneCount != 1) throw new System.Exception($"SMOKE FAIL: engine LaneCount={layout.LaneCount} expect 1 (single head)");
+                    throw new System.Exception("SMOKE FAIL: engine lanes=[" + string.Join(",", lanes) + "] expect [0,0,2,0,1,1,0,0,0]");
+                if (layout.LaneCount != 1) throw new System.Exception($"SMOKE FAIL: engine LaneCount={layout.LaneCount} expect 1");
                 var maxLane = 0;
                 for (var i = 0; i < lanes.Length; i++) if (lanes[i] > maxLane) maxLane = lanes[i];
-                if (maxLane != 2) throw new System.Exception($"SMOKE FAIL: engine maxLane={maxLane} expect 2 (3 lane slots)");
-                if (layout.GetHeadNodeIndexForLane(0) != 0 || layout.GetHeadNodeIndexForLane(2) != 0)
-                    throw new System.Exception("SMOKE FAIL: engine lane->head clamp broken");
+                if (maxLane != 2) throw new System.Exception($"SMOKE FAIL: engine maxLane={maxLane} expect 2");
 
-                // 渲染回归防线：自绘元素必须拿到非零内容高度，否则在窗口里什么都不画
-                //（布局数学测不出像素，这里直接断言 style.height 已按行数撑开）
-                var contentHeight = graph.style.height.value.value;
-                var expectHeight = rows * CommitGraphElement.RowHeight;
-                if (contentHeight <= 0f || contentHeight != expectHeight)
-                    throw new System.Exception($"SMOKE FAIL: graph contentHeight={contentHeight} expect {expectHeight}");
+                // 2) 逐行在途边（手算期望：E=[{},{0,2},{1,3 1,4},{1,4},{3,6},{3,6},{},{},{}]）
+                var eir = EdgesInRow.Build(pGraph);
+                var expectedCounts = new[] { 0, 1, 2, 1, 1, 1, 0, 0, 0 };
+                for (var r = 0; r < 9; r++)
+                {
+                    var c = eir.GetEdgesInRow(r).Count;
+                    if (c != expectedCounts[r]) throw new System.Exception($"SMOKE FAIL: EdgesInRow[{r}].Count={c} expect {expectedCounts[r]}");
+                }
+                var e1 = eir.GetEdgesInRow(1);
+                if (e1.Count != 1 || e1[0].Up != 0 || e1[0].Down != 2)
+                    throw new System.Exception("SMOKE FAIL: EdgesInRow[1] != {(0,2)}");
 
+                // 3) 行内打印元素（节点槽位断言：r0=0, r1=0, r2=2——feature/y 节点在 Feature/x 边右侧）
+                var headSet = new HashSet<int>(layout.HeadNodes);
+                RowPrinter printer;
+                try
+                {
+                    printer = RowPrinter.Build(pGraph, layout, eir, headSet);
+                }
+                catch (System.Exception ex)
+                {
+                    throw new System.Exception("SMOKE FAIL: RowPrinter.Build -> " + ex.GetType().Name + "\n" + ex.StackTrace, ex);
+                }
+                if (printer.GetNodePosition(0) != 0 || printer.GetNodePosition(1) != 0 || printer.GetNodePosition(2) != 2)
+                    throw new System.Exception($"SMOKE FAIL: nodePositions 0/1/2 = {printer.GetNodePosition(0)}/{printer.GetNodePosition(1)}/{printer.GetNodePosition(2)} expect 0/0/2");
+                // row0 应有 2 条下行边（父 58c902b 与 8f7a1f9）
+                if (printer.GetEdgesInRow(0).Count != 2)
+                    throw new System.Exception($"SMOKE FAIL: row0 edges={printer.GetEdgesInRow(0).Count} expect 2");
+
+                // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
-                UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={rows} edges={edges} head={headEntry.ShortID} \"{headEntry.Summary}\" mergeParents={mergeParents}");
+                UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
             }
 
             EditorApplication.Exit(0);
@@ -111,7 +119,7 @@ namespace KF.GitUI
             {
                 session = GitSession.Open(Environment.CurrentDirectory);
                 logEntries = session.LoadHistory(200);
-                RenderCommits();
+                BuildGraphPipeline();
             }
             catch (Exception ex)
             {
@@ -120,58 +128,76 @@ namespace KF.GitUI
             }
         }
 
-        private void RenderCommits()
+        private void BuildGraphPipeline()
         {
-            graph.SetData(logEntries);
-            graphStatus.text = $"{logEntries.Count} commits · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
+            var commitIndex = new Dictionary<string, int>();
+            for (var i = 0; i < logEntries.Count; i++) commitIndex[logEntries[i].CommitID] = i;
 
-            commitList.Clear();
-            foreach (var e in logEntries)
+            var pGraph = PermanentLinearGraph.Build(logEntries, commitIndex);
+            var layout = GraphLayout.Build(pGraph);
+            var eir = EdgesInRow.Build(pGraph);
+            var headSet = new HashSet<int>(layout.HeadNodes);
+            var printer = RowPrinter.Build(pGraph, layout, eir, headSet);
+
+            graphTable.SetData(logEntries, printer);
+            graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
+        }
+
+        private void ShowCommitDetail(int row)
+        {
+            if (row < 0 || row >= logEntries.Count) return;
+            var e = logEntries[row];
+            changesList.Clear();
+            if (e.Changes != null && e.Changes.Count > 0)
             {
-                var line = new Label($"{e.ShortID}  {e.Summary}");
-                line.style.unityTextAlign = TextAnchor.MiddleLeft;
-                line.tooltip = "parents: " + string.Join(",", e.Parents) + "\nfiles: " + (e.Changes?.Count ?? 0);
-                commitList.Add(line);
+                foreach (var c in e.Changes)
+                {
+                    var l = new Label($"  {c.Status,-12} {c.path}");
+                    l.style.fontSize = 12;
+                    changesList.Add(l);
+                }
             }
+            else
+            {
+                changesList.Add(new Label("  (no file changes parsed — merge 需走 git diff 另行加载)"));
+            }
+
+            detailText.text = $"{e.ShortID}  {e.Summary}\n\n{e.Description}";
         }
 
         private VisualElement BuildLayout()
         {
-            var outer = new TwoPaneSplitView(0, 320, TwoPaneSplitViewOrientation.Horizontal);
+            var outer = new TwoPaneSplitView(0, 420, TwoPaneSplitViewOrientation.Horizontal);
             outer.name = "outer-split";
 
-            // 左：提交图谱（自绘泳道 + 节点/连线）
+            // 左：图谱表格（图谱 + 消息同行同格）
             var graphPane = new VisualElement();
             graphStatus = new Label("loading…");
             graphPane.Add(graphStatus);
             var graphScroll = new ScrollView(ScrollViewMode.Vertical);
-            graph = new CommitGraphElement();
-            graphScroll.Add(graph);
+            graphTable = new GraphTable();
+            graphTable.RowSelected += ShowCommitDetail;
+            graphScroll.Add(graphTable);
             graphPane.Add(graphScroll);
             outer.Add(graphPane);
 
-            // 右：上 提交列表（文件树下一步） / 下 详情占位
-            var inner = new TwoPaneSplitView(0, 240, TwoPaneSplitViewOrientation.Vertical);
+            // 右：上 改动文件列表 / 下 提交详情
+            var inner = new TwoPaneSplitView(0, 260, TwoPaneSplitViewOrientation.Vertical);
             inner.name = "inner-split";
-            commitList = new ScrollView(ScrollViewMode.Vertical);
-            inner.Add(commitList);
-            inner.Add(PlaceholderPane("Commit details (WIP)", "full message"));
+            changesList = new ScrollView(ScrollViewMode.Vertical);
+            inner.Add(changesList);
+            var detailScroll = new ScrollView(ScrollViewMode.Vertical);
+            detailText = new Label("select a commit");
+            detailText.style.whiteSpace = WhiteSpace.Normal;
+            detailText.style.paddingLeft = 6;
+            detailText.style.paddingRight = 6;
+            detailText.style.paddingTop = 6;
+            detailText.style.paddingBottom = 6;
+            detailScroll.Add(detailText);
+            inner.Add(detailScroll);
             outer.Add(inner);
 
             return outer;
-        }
-
-        private static VisualElement PlaceholderPane(string title, string hint)
-        {
-            var sv = new ScrollView(ScrollViewMode.Vertical);
-            var t = new Label(title);
-            t.style.unityFontStyleAndWeight = FontStyle.Bold;
-            t.style.paddingBottom = 4;
-            sv.Add(t);
-            var b = new Label(hint);
-            b.style.whiteSpace = WhiteSpace.Normal;
-            sv.Add(b);
-            return sv;
         }
 
         private void OnDisable()
