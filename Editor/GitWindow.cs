@@ -114,6 +114,18 @@ namespace KF.GitUI
                 if (rootChanges == null || rootChanges.Combined.Count == 0)
                     throw new System.Exception("SMOKE FAIL: root Combined empty");
 
+                // 6) refs 映射（JetBrains groupForTable：HEAD 当前分支 -> 本地 -> remote -> tags）
+                var refs = s.LoadRefs();
+                if (refs.Count < 3) throw new System.Exception($"SMOKE FAIL: refs count={refs.Count} expect >=3");
+                if (refs[0].Type != GitSession.RefType.Head || refs[0].DisplayName != "main")
+                    throw new System.Exception($"SMOKE FAIL: first ref != HEAD main ({refs[0].Type}/{refs[0].DisplayName})");
+                if (refs[0].CommitId != log[0].CommitID)
+                    throw new System.Exception("SMOKE FAIL: main ref not pointing at head commit");
+                var byName = new Dictionary<string, GitSession.GitRefInfo>();
+                foreach (var rf in refs) byName[rf.DisplayName] = rf;
+                if (!byName.ContainsKey("feature/x") || !byName.ContainsKey("feature/y"))
+                    throw new System.Exception("SMOKE FAIL: feature branches missing from refs");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -156,8 +168,30 @@ namespace KF.GitUI
             var headSet = new HashSet<int>(layout.HeadNodes);
             var printer = RowPrinter.Build(pGraph, layout, eir, headSet);
 
-            graphTable.SetData(logEntries, printer);
-            graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
+            // refs 行内标签（HEAD→本地→remote→tags；for-each-ref 兼容 packed refs）
+            List<GitSession.GitRefInfo> refs = null;
+            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit = null;
+            try
+            {
+                refs = session.LoadRefs();
+                if (refs.Count > 0)
+                {
+                    refsByCommit = new Dictionary<string, List<GitSession.GitRefInfo>>();
+                    foreach (var rf in refs)
+                    {
+                        if (!refsByCommit.TryGetValue(rf.CommitId, out var list))
+                            refsByCommit[rf.CommitId] = list = new List<GitSession.GitRefInfo>();
+                        list.Add(rf);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[gitui] refs load failed: " + ex);
+            }
+
+            graphTable.SetData(logEntries, printer, refsByCommit);
+            graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · {refs?.Count ?? 0} refs · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
         }
 
         private void ShowCommitDetail(int row)

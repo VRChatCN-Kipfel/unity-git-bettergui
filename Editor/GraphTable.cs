@@ -24,6 +24,7 @@ namespace KF.GitUI
         private readonly VisualElement graphColumn;
         private readonly VisualElement messageColumn;
         private readonly List<Label> messageLabels = new List<Label>();
+        private readonly List<VisualElement> rowElements = new List<VisualElement>();
 
         /// <summary>行选中回调（参数 = 行号）。</summary>
         public event System.Action<int> RowSelected;
@@ -51,7 +52,8 @@ namespace KF.GitUI
             if (row >= 0 && row < (log?.Count ?? 0)) Select(row);
         }
 
-        public void SetData(List<GitLogEntry> commits, RowPrinter rowPrinter)
+        public void SetData(List<GitLogEntry> commits, RowPrinter rowPrinter,
+            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit = null)
         {
             log = commits;
             printer = rowPrinter;
@@ -70,31 +72,74 @@ namespace KF.GitUI
             graphColumn.style.height = printer.Rows * RowHeight;
             messageColumn.Clear();
             messageLabels.Clear();
+            rowElements.Clear();
 
             for (var r = 0; r < log.Count; r++)
             {
+                // 行容器：refs 标签 + 消息（JetBrains GraphCommitCellRenderer 同格编排）
+                var rowEl = new VisualElement();
+                rowEl.style.flexDirection = FlexDirection.Row;
+                rowEl.style.height = RowHeight;
+                rowEl.style.alignItems = Align.Center;
+
+                if (refsByCommit != null && refsByCommit.TryGetValue(log[r].CommitID, out var refs))
+                {
+                    foreach (var rf in refs)
+                        rowEl.Add(MakeRefChip(rf));
+                }
+
                 var label = new Label($"  {log[r].ShortID}  {log[r].Summary}");
                 label.style.height = RowHeight;
                 label.style.unityTextAlign = TextAnchor.MiddleLeft;
                 label.style.fontSize = 12;
+                label.style.flexGrow = 1f;
                 label.tooltip = "parents: " + string.Join(",", log[r].Parents) + "\nfiles: " + (log[r].Changes?.Count ?? 0);
+                rowEl.Add(label);
+
                 var row = r;
-                label.RegisterCallback<ClickEvent>(_ => Select(row));
+                rowEl.RegisterCallback<ClickEvent>(_ => Select(row));
                 messageLabels.Add(label);
-                messageColumn.Add(label);
+                rowElements.Add(rowEl);
+                messageColumn.Add(rowEl);
             }
 
             MarkDirtyRepaint();
+        }
+
+        /// <summary>refs 标签 chip（JetBrains VcsLogLabelPainter 语义简化版）：类型着色、圆角、白字。</summary>
+        private static Label MakeRefChip(GitSession.GitRefInfo rf)
+        {
+            var chip = new Label(rf.DisplayName);
+            chip.style.fontSize = 10;
+            chip.style.color = new Color(1f, 1f, 1f);
+            chip.style.paddingLeft = 5;
+            chip.style.paddingRight = 5;
+            chip.style.paddingTop = 1;
+            chip.style.paddingBottom = 1;
+            chip.style.marginRight = 4;
+            chip.style.borderTopLeftRadius = 3;
+            chip.style.borderTopRightRadius = 3;
+            chip.style.borderBottomLeftRadius = 3;
+            chip.style.borderBottomRightRadius = 3;
+            chip.style.unityFontStyleAndWeight = rf.Type == GitSession.RefType.Head ? FontStyle.Bold : FontStyle.Normal;
+            switch (rf.Type)
+            {
+                case GitSession.RefType.Head: chip.style.backgroundColor = new Color(0.25f, 0.5f, 0.85f); break;
+                case GitSession.RefType.Local: chip.style.backgroundColor = new Color(0.2f, 0.55f, 0.42f); break;
+                case GitSession.RefType.Remote: chip.style.backgroundColor = new Color(0.42f, 0.42f, 0.45f); break;
+                default: chip.style.backgroundColor = new Color(0.72f, 0.55f, 0.18f); break; // Tag
+            }
+            return chip;
         }
 
         public void Select(int row)
         {
             if (row < 0 || row >= (log?.Count ?? 0)) return;
             selectedRow = row;
-            for (var i = 0; i < messageLabels.Count; i++)
+            for (var i = 0; i < rowElements.Count; i++)
             {
                 var bg = i == selectedRow ? new Color(0.25f, 0.45f, 0.75f, 0.55f) : Color.clear;
-                messageLabels[i].style.backgroundColor = bg;
+                rowElements[i].style.backgroundColor = bg;
             }
             graphColumn.MarkDirtyRepaint();
             RowSelected?.Invoke(row);
