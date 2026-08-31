@@ -44,10 +44,20 @@ namespace KF.GitUI
 
             using (var s = GitSession.Open(Environment.CurrentDirectory))
             {
-                var log = s.LoadHistory(50);
+                var log = s.LoadHistory(200);
                 if (log.Count == 0) throw new System.Exception("SMOKE FAIL: no commits parsed");
-                var head = log[0];
-                UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} commits={log.Count} head={head.ShortID} \"{head.Summary}\" parents={head.Parents?.Count ?? 0}");
+
+                // 图谱布局断言（测试仓库:9 提交,2 merge,总边 2*2+6*1=10）
+                var graph = new CommitGraphElement();
+                graph.SetData(log);
+                var (rows, edges, headShort, mergeParents) = graph.LayoutInfo;
+                if (rows != 9) throw new System.Exception($"SMOKE FAIL: rows={rows} expect 9");
+                if (edges != 10) throw new System.Exception($"SMOKE FAIL: edges={edges} expect 10");
+                if (headShort != "810e7c4") throw new System.Exception($"SMOKE FAIL: head={headShort} expect 810e7c4");
+                if (mergeParents != 2) throw new System.Exception($"SMOKE FAIL: head parents={mergeParents} expect 2");
+
+                var headEntry = log[0];
+                UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={rows} edges={edges} head={headEntry.ShortID} \"{headEntry.Summary}\" mergeParents={mergeParents}");
             }
 
             EditorApplication.Exit(0);
