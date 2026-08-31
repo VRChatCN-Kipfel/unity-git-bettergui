@@ -36,11 +36,19 @@ namespace KF.GitUI
             graphColumn = new VisualElement();
             graphColumn.generateVisualContent += PaintGraph;
             graphColumn.style.alignSelf = Align.FlexStart;
+            graphColumn.RegisterCallback<ClickEvent>(OnGraphClicked);
             messageColumn = new VisualElement();
             messageColumn.style.flexGrow = 1f;
             messageColumn.style.flexDirection = FlexDirection.Column;
             Add(graphColumn);
             Add(messageColumn);
+        }
+
+        /// <summary>点击图谱列：按行高换算成行号 -> 选中该行（节点同样选中，JetBrains 行级交互）。</summary>
+        private void OnGraphClicked(ClickEvent ev)
+        {
+            var row = (int)(ev.localPosition.y / RowHeight);
+            if (row >= 0 && row < (log?.Count ?? 0)) Select(row);
         }
 
         public void SetData(List<GitLogEntry> commits, RowPrinter rowPrinter)
@@ -104,13 +112,27 @@ namespace KF.GitUI
             var painter = mgc.painter2D;
             if (painter == null || printer == null) return;
 
+            // 0) 选中行背景（贯通图谱列，与右侧消息蓝条连成一条）
+            if (selectedRow >= 0)
+            {
+                var sy = selectedRow * RowHeight;
+                painter.fillColor = new Color(0.23f, 0.42f, 0.72f, 0.35f);
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(0f, sy));
+                painter.LineTo(new Vector2(graphWidthPx, sy));
+                painter.LineTo(new Vector2(graphWidthPx, sy + RowHeight));
+                painter.LineTo(new Vector2(0f, sy + RowHeight));
+                painter.ClosePath();
+                painter.Fill();
+            }
+
             // 1) 边（先画，节点压上）
             for (var r = 0; r < printer.Rows; r++)
             {
                 foreach (var e in printer.GetEdgesInRow(r))
                 {
                     var selected = (r == selectedRow || (e.IsDown ? e.DownNode == selectedRow : e.UpNode == selectedRow));
-                    painter.lineWidth = selected ? 2.5f : 1.5f;
+                    painter.lineWidth = selected ? 1.0f : 0.4f;
                     painter.strokeColor = LaneColor(printer.LayoutIndex(e.UpNode >= 0 ? e.UpNode : r));
                     var x1 = LaneWidth * e.FromPosition + LaneWidth / 2f;
                     var y1 = r * RowHeight + RowHeight / 2f;
@@ -131,16 +153,17 @@ namespace KF.GitUI
                 {
                     var x0 = LaneWidth * n.Position + LaneWidth / 2f;
                     var y0 = r * RowHeight + RowHeight / 2f;
-                    var isSelected = r == selectedRow;
-                    if (isSelected)
+                    var color = LaneColor(printer.LayoutIndex(r));
+                    if (r == selectedRow)
                     {
-                        // 选中：外圈黑色加粗 + 填充
-                        painter.fillColor = Color.black;
+                        // 选中：节点本体不动，用同色圆环套在点外（无黑边，JetBrains 观感）
+                        painter.lineWidth = 1.4f;
+                        painter.strokeColor = color;
                         painter.BeginPath();
-                        painter.Arc(new Vector2(x0, y0), NodeRadius + 2f, Angle.Degrees(0f), Angle.Degrees(360f), ArcDirection.Clockwise);
-                        painter.Fill();
+                        painter.Arc(new Vector2(x0, y0), NodeRadius + 2.5f, Angle.Degrees(0f), Angle.Degrees(360f), ArcDirection.Clockwise);
+                        painter.Stroke();
                     }
-                    painter.fillColor = LaneColor(printer.LayoutIndex(r));
+                    painter.fillColor = color;
                     painter.BeginPath();
                     painter.Arc(new Vector2(x0, y0), NodeRadius, Angle.Degrees(0f), Angle.Degrees(360f), ArcDirection.Clockwise);
                     painter.Fill();
