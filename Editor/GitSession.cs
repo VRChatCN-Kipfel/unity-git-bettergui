@@ -313,6 +313,42 @@ namespace KF.GitUI
             }
         }
 
+        // ---- 操作通道（左侧右键/Commit/分支弹窗共用；全部任务后台线程执行由调用方保证） ----
+
+        /// <summary>执行 git 操作任务；失败抛 InvalidOperationException（附 stderr）。</summary>
+        private static void RunOp(string name, ITask task)
+        {
+            task.RunSynchronously();
+            if (task.Successful) return;
+            var err = task.Errors;
+            throw new InvalidOperationException(name + " failed"
+                + (string.IsNullOrEmpty(err) ? " (exit code non-zero)" : ":\n" + err));
+        }
+
+        /// <summary>重置当前分支到指定提交（--soft/--mixed/--hard，带确认由 UI 层负责）。</summary>
+        public void ResetTo(string hash, GitResetMode mode)
+        {
+            RunOp("git reset", new GitResetTask(platform, hash, mode).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>撤销指定提交（git revert --no-edit，生成新提交）。</summary>
+        public void RevertCommit(string hash)
+        {
+            RunOp("git revert", new GitRevertTask(platform, hash).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>基于指定 ref 新建分支（不切换；名称合法性交给 git 校验并回显错误）。</summary>
+        public void NewBranch(string newName, string baseRef)
+        {
+            RunOp("git branch", new GitBranchCreateTask(platform, newName, baseRef).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>检出分支/提交（提交会进入 detached HEAD，提示由 UI 层负责）。</summary>
+        public void Checkout(string gitRef)
+        {
+            RunOp("git checkout", new GitSwitchBranchesTask(platform, gitRef).Configure(platform.ProcessManager));
+        }
+
         private List<(char, string)> RunNameStatus(string arguments)
         {
             var task = new GitDiffNameStatusTask(platform, arguments)

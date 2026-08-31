@@ -220,6 +220,19 @@ namespace KF.GitUI
                 if (!(filtered[3] is GitContextSeparator))
                     throw new System.Exception("SMOKE FAIL: menu separator");
 
+                // 12) 提交语境动作（图谱行右键，JetBrains Log 右键裁剪版）
+                var commitActions = GitWindow.BuildCommitContextActions(s, log, 0, () => { }).ToList();
+                var commitTexts = commitActions.Select(a => a.Text).Where(t => t != null).ToList();
+                if (!commitTexts.Contains("Copy Hash") || !commitTexts.Contains("Copy Summary"))
+                    throw new System.Exception("SMOKE FAIL: commit menu copy items");
+                if (!commitTexts.Contains("Reset…/Soft") || !commitTexts.Contains("Reset…/Mixed")
+                    || !commitTexts.Contains("Reset…/Hard"))
+                    throw new System.Exception("SMOKE FAIL: commit menu reset submenu");
+                if (!commitTexts.Contains("Revert Commit…") || !commitTexts.Contains("Checkout…"))
+                    throw new System.Exception("SMOKE FAIL: commit menu revert/checkout");
+                if (GitWindow.BuildCommitContextActions(s, log, 999, () => { }).Any())
+                    throw new System.Exception("SMOKE FAIL: commit menu out-of-range should be empty");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -232,8 +245,166 @@ namespace KF.GitUI
         {
             rootVisualElement.Clear();
             rootVisualElement.Add(BuildLayout());
+            graphTable.ContextActionProvider = ContextProvider;
             EditorApplication.update += OnEditorUpdate;
             ReloadHistory();
+        }
+
+        private IEnumerable<IGitContextAction> ContextProvider(int row)
+        {
+            return BuildCommitContextActions(session, logEntries, row, RefreshData);
+        }
+
+        /// <summary>
+        /// 提交语境右键动作（JetBrains Git.Log.ContextMenu 裁剪版）：
+        /// Copy Hash / Copy Summary | New Branch… | Reset…(软/混/硬) | Revert Commit… / Checkout…
+        /// 静态可测：session/log 输入，onMutated 在变更成功后回调（窗口负责刷新）。
+        /// </summary>
+        public static IEnumerable<IGitContextAction> BuildCommitContextActions(GitSession session,
+            List<GitLogEntry> log, int row, Action onMutated)
+        {
+            if (session == null || log == null || row < 0 || row >= log.Count) yield break;
+            var e = log[row];
+
+            yield return new DelegateAction("copy.hash", I18n.L(I18n.Keys.MenuCopyHash),
+                () => GUIUtility.systemCopyBuffer = e.CommitID);
+            yield return new DelegateAction("copy.summary", I18n.L(I18n.Keys.MenuCopySummary),
+                () => GUIUtility.systemCopyBuffer = e.Summary);
+            yield return GitContextSeparator.Instance;
+            yield return new DelegateAction("new.branch", I18n.L(I18n.Keys.MenuNewBranch),
+                () => PromptNewBranch(session, e, onMutated));
+            yield return GitContextSeparator.Instance;
+            yield return new DelegateAction("reset.soft", ResetPath(I18n.Keys.MenuResetSoft),
+                () => ConfirmReset(session, e, GitResetMode.Soft, onMutated));
+            yield return new DelegateAction("reset.mixed", ResetPath(I18n.Keys.MenuResetMixed),
+                () => ConfirmReset(session, e, GitResetMode.Mixed, onMutated));
+            yield return new DelegateAction("reset.hard", ResetPath(I18n.Keys.MenuResetHard),
+                () => ConfirmReset(session, e, GitResetMode.Hard, onMutated));
+            yield return GitContextSeparator.Instance;
+            yield return new DelegateAction("revert", I18n.L(I18n.Keys.MenuRevert),
+                () => ConfirmRevert(session, e, onMutated));
+            yield return new DelegateAction("checkout", I18n.L(I18n.Keys.MenuCheckout),
+                () => ConfirmCheckout(session, e, onMutated));
+        }
+
+        /// <summary>DropdownMenu 子菜单路径："Reset…/Soft"（'/' 分段自动嵌套）。</summary>
+        private static string ResetPath(string modeKey)
+        {
+            return I18n.L(I18n.Keys.MenuReset) + "/" + I18n.L(modeKey);
+        }
+
+        private static void PromptNewBranch(GitSession session, GitLogEntry e, Action onMutated)
+        {
+            var name = InputDialog.Show(I18n.L(I18n.Keys.MenuNewBranch),
+                I18n.L(I18n.Keys.MenuNewBranchPrompt, e.ShortID), "");
+            if (string.IsNullOrWhiteSpace(name)) return;
+            try
+            {
+                session.NewBranch(name.Trim(), e.CommitID);
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
+        }
+
+        private static void ConfirmReset(GitSession session, GitLogEntry e, GitResetMode mode, Action onMutated)
+        {
+            var msg = I18n.L(I18n.Keys.MenuResetConfirm, e.ShortID, ModeText(mode));
+            if (mode == GitResetMode.Hard)
+                msg += "\n\n" + I18n.L(I18n.Keys.MenuResetHardWarn);
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuReset), msg,
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            try
+            {
+                session.ResetTo(e.CommitID, mode);
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
+        }
+
+        private static void ConfirmRevert(GitSession session, GitLogEntry e, Action onMutated)
+        {
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuRevert),
+                    I18n.L(I18n.Keys.MenuRevertConfirm, e.ShortID),
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            try
+            {
+                session.RevertCommit(e.CommitID);
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
+        }
+
+        private static void ConfirmCheckout(GitSession session, GitLogEntry e, Action onMutated)
+        {
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuCheckout),
+                    I18n.L(I18n.Keys.MenuCheckoutConfirm, e.ShortID),
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            try
+            {
+                session.Checkout(e.CommitID);
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
+        }
+
+        private static string ModeText(GitResetMode m)
+        {
+            switch (m)
+            {
+                case GitResetMode.Soft: return I18n.L(I18n.Keys.MenuResetSoft);
+                case GitResetMode.Mixed: return I18n.L(I18n.Keys.MenuResetMixed);
+                case GitResetMode.Hard: return I18n.L(I18n.Keys.MenuResetHard);
+                default: return m.ToString();
+            }
+        }
+
+        private static void ErrorDialog(Exception ex)
+        {
+            Debug.LogWarning("[gitui] op failed: " + ex);
+            EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuOpFailedTitle), ex.Message, I18n.L(I18n.Keys.DialogOk));
+        }
+
+        /// <summary>轻量模态输入窗（JetBrains 风格文本输入；EditorUtility 无 InputDialog）。</summary>
+        private sealed class InputDialog : EditorWindow
+        {
+            private string message;
+            private string value;
+            private bool confirmed;
+
+            public static string Show(string title, string message, string defaultValue)
+            {
+                var w = CreateInstance<InputDialog>();
+                w.titleContent = new GUIContent(title);
+                w.message = message;
+                w.value = defaultValue ?? string.Empty;
+                w.ShowModal();
+                return w.confirmed ? w.value : null;
+            }
+
+            private void OnGUI()
+            {
+                GUILayout.Space(6);
+                GUILayout.Label(message, EditorStyles.wordWrappedLabel);
+                value = GUILayout.TextField(value ?? string.Empty);
+                GUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(I18n.L(I18n.Keys.DialogOk)))
+                {
+                    confirmed = true;
+                    Close();
+                }
+                if (GUILayout.Button(I18n.L(I18n.Keys.DialogCancel)))
+                    Close();
+                GUILayout.EndHorizontal();
+                if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return)
+                {
+                    confirmed = true;
+                    Close();
+                }
+            }
         }
 
         /// <summary>打开/重开会话并加载。自动刷新只调 RefreshData（保留会话与不可变缓存）。</summary>

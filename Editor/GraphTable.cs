@@ -29,6 +29,11 @@ namespace KF.GitUI
         /// <summary>行选中回调（参数 = 行号）。</summary>
         public event System.Action<int> RowSelected;
 
+        /// <summary>提交语境右键动作源（图谱行右键；null = 无菜单）。弹出时先选中该行（JetBrains 语义）。</summary>
+        public System.Func<int, System.Collections.Generic.IEnumerable<IGitContextAction>> ContextActionProvider;
+
+        private static readonly IGitContextAction[] NoActions = new IGitContextAction[0];
+
         public int SelectedRow => selectedRow;
 
         public GraphTable()
@@ -119,6 +124,11 @@ namespace KF.GitUI
 
                 var row = r;
                 rowEl.RegisterCallback<ClickEvent>(_ => Select(row));
+                GitContextMenu.Attach(rowEl, () =>
+                {
+                    Select(row);
+                    return ContextActionProvider?.Invoke(row) ?? NoActions;
+                });
                 messageLabels.Add(label);
                 rowElements.Add(rowEl);
                 messageColumn.Add(rowEl);

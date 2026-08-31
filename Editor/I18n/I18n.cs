@@ -38,6 +38,24 @@ namespace KF.GitUI
                 [Keys.NoMergeConflicts] = "✓ no merge conflicts",
                 [Keys.ChangesToParent] = "Changes to parent {0}",
                 [Keys.SectionMerged] = "Merged (all parents)",
+                // -- 右键动作（图谱行提交语境） --
+                [Keys.MenuCopyHash] = "Copy Hash",
+                [Keys.MenuCopySummary] = "Copy Summary",
+                [Keys.MenuNewBranch] = "New Branch…",
+                [Keys.MenuNewBranchPrompt] = "New branch name (from {0}):",
+                [Keys.MenuReset] = "Reset…",
+                [Keys.MenuResetSoft] = "Soft",
+                [Keys.MenuResetMixed] = "Mixed",
+                [Keys.MenuResetHard] = "Hard",
+                [Keys.MenuResetConfirm] = "Reset {0} to {1}?\n\nIndex/work tree will be modified.",
+                [Keys.MenuResetHardWarn] = "DANGER: working tree changes will be discarded.",
+                [Keys.MenuRevert] = "Revert Commit…",
+                [Keys.MenuRevertConfirm] = "Revert commit {0}?\n\nThis creates a new commit that undoes it.",
+                [Keys.MenuCheckout] = "Checkout…",
+                [Keys.MenuCheckoutConfirm] = "Checkout {0}?\n\nThis detaches HEAD from the current branch.",
+                [Keys.DialogOk] = "OK",
+                [Keys.DialogCancel] = "Cancel",
+                [Keys.MenuOpFailedTitle] = "Git operation failed",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

@@ -27,6 +27,25 @@ namespace KF.GitUI
         public const string NoMergeConflicts = "ui.detail.noMergeConflicts";
         public const string ChangesToParent = "ui.detail.changesToParent"; // {0}=父提交短号
         public const string SectionMerged = "ui.detail.sectionMerged";
+
+        // -- 右键动作（图谱行提交语境） --
+        public const string MenuCopyHash = "menu.copyHash";
+        public const string MenuCopySummary = "menu.copySummary";
+        public const string MenuNewBranch = "menu.newBranch";
+        public const string MenuNewBranchPrompt = "menu.newBranchPrompt"; // {0}=提交短号
+        public const string MenuReset = "menu.reset";
+        public const string MenuResetSoft = "menu.reset.soft";
+        public const string MenuResetMixed = "menu.reset.mixed";
+        public const string MenuResetHard = "menu.reset.hard";
+        public const string MenuResetConfirm = "menu.reset.confirm"; // {0}=短号 {1}=模式
+        public const string MenuResetHardWarn = "menu.reset.hardWarn";
+        public const string MenuRevert = "menu.revert";
+        public const string MenuRevertConfirm = "menu.revert.confirm"; // {0}=短号
+        public const string MenuCheckout = "menu.checkout";
+        public const string MenuCheckoutConfirm = "menu.checkout.confirm"; // {0}=短号
+        public const string DialogOk = "dialog.ok";
+        public const string DialogCancel = "dialog.cancel";
+        public const string MenuOpFailedTitle = "dialog.opFailedTitle";
         }
     }
 }
