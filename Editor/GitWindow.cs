@@ -23,6 +23,8 @@ namespace KF.GitUI
         private Label graphStatus;
         private ScrollView changesList;
         private Label detailText;
+        private string lastFingerprint;
+        private double lastFingerprintCheck;
 
         [MenuItem("Window/Git/Git Better GUI (wip)")]
         public static void Open()
@@ -126,6 +128,25 @@ namespace KF.GitUI
                 if (!byName.ContainsKey("feature/x") || !byName.ContainsKey("feature/y"))
                     throw new System.Exception("SMOKE FAIL: feature branches missing from refs");
 
+                // 7) 长边箭头判定（JetBrains long-edge：span>=30 的近端 ±1 行画箭头，中部 Hidden；<30 全部 Segment）
+                if (RowPrinter.DecideLongEdge(32, 1, 0, 40) != RowPrinter.RenderKind.ArrowDown)
+                    throw new System.Exception("SMOKE FAIL: DecideLongEdge ArrowDown");
+                if (RowPrinter.DecideLongEdge(32, 39, 0, 40) != RowPrinter.RenderKind.ArrowUp)
+                    throw new System.Exception("SMOKE FAIL: DecideLongEdge ArrowUp");
+                if (RowPrinter.DecideLongEdge(32, 20, 0, 40) != RowPrinter.RenderKind.Hidden)
+                    throw new System.Exception("SMOKE FAIL: DecideLongEdge Hidden");
+                if (RowPrinter.DecideLongEdge(29, 20, 0, 29) != RowPrinter.RenderKind.Segment)
+                    throw new System.Exception("SMOKE FAIL: DecideLongEdge Segment");
+
+                // 8) 线性段折叠：minRun=3 时 行5..7（ca9b7f8/3964f75/f908745 无 refs 简单链）成段，中部行 6..7 隐藏
+                var refedSet = new HashSet<string>();
+                foreach (var rf in refs) refedSet.Add(rf.CommitId);
+                var segs = LinearSegments.Build(log, pGraph, headSet, refedSet, minRun: 3);
+                if (segs.Runs.Count != 1 || segs.Runs[0].Top != 5 || segs.Runs[0].Bottom != 7)
+                    throw new System.Exception($"SMOKE FAIL: collapse runs={segs.Runs.Count} [{string.Join(";", segs.Runs)}] expect [(5,7)]");
+                if (!segs.HiddenRows().SetEquals(new int[] { 6, 7 }))
+                    throw new System.Exception("SMOKE FAIL: collapse hidden rows != {6,7}");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -138,23 +159,55 @@ namespace KF.GitUI
         {
             rootVisualElement.Clear();
             rootVisualElement.Add(BuildLayout());
+            EditorApplication.update += OnEditorUpdate;
             ReloadHistory();
         }
 
+        /// <summary>打开/重开会话并加载。自动刷新只调 RefreshData（保留会话与不可变缓存）。</summary>
         private void ReloadHistory()
         {
             session?.Dispose();
             try
             {
                 session = GitSession.Open(Environment.CurrentDirectory);
-                logEntries = session.LoadHistory(200);
-                BuildGraphPipeline();
+                lastFingerprint = session.GetFingerprint();
+                RefreshData();
             }
             catch (Exception ex)
             {
                 graphStatus.text = "Git unavailable: " + ex.Message;
                 Debug.LogWarning("[gitui] " + ex);
             }
+        }
+
+        /// <summary>重载历史 + refs + 重建管线（不重建会话，保留 commit 变更缓存）；尽量保住选中提交。</summary>
+        private void RefreshData()
+        {
+            if (session == null) return;
+            var keepCommit = graphTable.SelectedRow >= 0 && graphTable.SelectedRow < logEntries.Count
+                ? logEntries[graphTable.SelectedRow].CommitID : null;
+
+            session.InvalidateCaches(); // refs 等可变数据失效（提交变更缓存保留：不可变）
+            logEntries = session.LoadHistory(200);
+            BuildGraphPipeline();
+
+            if (keepCommit != null)
+                for (var i = 0; i < logEntries.Count; i++)
+                    if (logEntries[i].CommitID == keepCommit) { graphTable.Select(i); break; }
+        }
+
+        /// <summary>仓库状态轮询（1.5s）：HEAD/refs 变化（提交/分支/fetch）-> 自动刷新图谱与标签。</summary>
+        private void OnEditorUpdate()
+        {
+            if (session == null) return;
+            var now = EditorApplication.timeSinceStartup;
+            if (now - lastFingerprintCheck < 1.5) return;
+            lastFingerprintCheck = now;
+            var fp = session.GetFingerprint();
+            if (fp == lastFingerprint) return;
+            lastFingerprint = fp;
+            try { RefreshData(); }
+            catch (Exception ex) { Debug.LogWarning("[gitui] auto-refresh failed: " + ex); }
         }
 
         private void BuildGraphPipeline()
@@ -190,8 +243,18 @@ namespace KF.GitUI
                 Debug.LogWarning("[gitui] refs load failed: " + ex);
             }
 
-            graphTable.SetData(logEntries, printer, refsByCommit);
+            graphTable.SetData(logEntries, printer, refsByCommit, BuildCollapseSegments(refsByCommit, pGraph, headSet));
             graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · {refs?.Count ?? 0} refs · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
+        }
+
+        /// <summary>线性段折叠（JetBrains CollapsedGraph 展示级）：连续简单链 + 无 refs + 非 head 的区间。</summary>
+        private LinearSegments BuildCollapseSegments(
+            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit,
+            PermanentLinearGraph pGraph, HashSet<int> headSet)
+        {
+            if (refsByCommit == null) return null;
+            var refed = new HashSet<string>(refsByCommit.Keys);
+            return LinearSegments.Build(logEntries, pGraph, headSet, refed);
         }
 
         private void ShowCommitDetail(int row)
@@ -334,6 +397,7 @@ namespace KF.GitUI
 
         private void OnDisable()
         {
+            EditorApplication.update -= OnEditorUpdate;
             session?.Dispose();
             session = null;
         }

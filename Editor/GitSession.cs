@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading;
 using Unity.Editor.Tasks;
 using Unity.VersionControl.Git;
@@ -20,8 +22,9 @@ namespace KF.GitUI
     {
         private readonly IGitEnvironment environment;
         private readonly IPlatform platform;
+        private readonly string projectPath;
         // 提交变更缓存：git 对象内容寻址、不可变 -> 按提交 hash 缓存永不过期，只需内存上限（有界 FIFO 淘汰）。
-        // 会话级：窗口重开/刷新会重建 GitSession，缓存随之失效（历史/refs 的可变数据另靠事件失效）。
+        // 会话级：窗口重开/刷新会重建 GitSession，缓存随之失效（历史/refs 的可变数据另靠指纹自动失效）。
         private const int ChangesCacheLimit = 512;
         private readonly Dictionary<string, CommitChanges> changesCache = new Dictionary<string, CommitChanges>();
         private readonly Queue<string> changesCacheOrder = new Queue<string>();
@@ -30,10 +33,11 @@ namespace KF.GitUI
         public IGitEnvironment Environment => environment;
         public IPlatform Platform => platform;
 
-        private GitSession(IGitEnvironment env, IPlatform p)
+        private GitSession(IGitEnvironment env, IPlatform p, string projectPath)
         {
             environment = env;
             platform = p;
+            this.projectPath = projectPath;
         }
 
         /// <summary>在给定项目目录建立 git 会话（探活系统 git + 绑定仓库）。git 缺失/<2.0 时抛异常。</summary>
@@ -57,7 +61,62 @@ namespace KF.GitUI
             if (!env.RepositoryPath.IsInitialized || !env.RepositoryPath.Exists(".git"))
                 throw new InvalidOperationException("project is not a git repository: " + projectPath);
 
-            return new GitSession(env, platform);
+            return new GitSession(env, platform, projectPath);
+        }
+
+        /// <summary>使可变数据缓存失效（refs 等）；提交变更缓存保留（不可变）。指纹变化时由窗口调用。</summary>
+        public void InvalidateCaches()
+        {
+            lock (cacheLock) refsCache = null;
+        }
+
+        /// <summary>仓库状态指纹（HEAD 内容 + refs 树文件 mtime/size + packed-refs/FETCH_HEAD 状态）。</summary>
+        public string GetFingerprint()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                var gitDir = Path.Combine(projectPath, ".git");
+                if (Directory.Exists(gitDir))
+                {
+                    sb.Append("HEAD=").Append(ReadFileOrEmpty(Path.Combine(gitDir, "HEAD")));
+                    var refsDir = Path.Combine(gitDir, "refs");
+                    if (Directory.Exists(refsDir))
+                    {
+                        var files = new List<string>(Directory.GetFiles(refsDir, "*", SearchOption.AllDirectories));
+                        files.Sort(StringComparer.Ordinal);
+                        foreach (var f in files)
+                        {
+                            var info = new FileInfo(f);
+                            sb.Append('|').Append(info.FullName.Substring(gitDir.Length)).Append(':')
+                                .Append(info.LastWriteTimeUtc.Ticks).Append(':').Append(info.Length);
+                        }
+                    }
+                    var packed = Path.Combine(gitDir, "packed-refs");
+                    if (File.Exists(packed))
+                    {
+                        var info = new FileInfo(packed);
+                        sb.Append("|packed-refs:").Append(info.LastWriteTimeUtc.Ticks).Append(':').Append(info.Length);
+                    }
+                    var fetchHead = Path.Combine(gitDir, "FETCH_HEAD");
+                    if (File.Exists(fetchHead))
+                    {
+                        var info = new FileInfo(fetchHead);
+                        sb.Append("|FETCH_HEAD:").Append(info.LastWriteTimeUtc.Ticks).Append(':').Append(info.Length);
+                    }
+                }
+                return sb.ToString();
+            }
+            catch (Exception)
+            {
+                return "";
+            }
+        }
+
+        private static string ReadFileOrEmpty(string path)
+        {
+            try { return File.Exists(path) ? File.ReadAllText(path).Trim() : ""; }
+            catch { return ""; }
         }
 
         /// <summary>加载提交历史（含 parents 全量 + 文件变更列表）。</summary>
