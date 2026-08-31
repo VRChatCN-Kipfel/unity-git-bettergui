@@ -113,7 +113,8 @@ namespace KF.GitUI
                 label.style.unityTextAlign = TextAnchor.MiddleLeft;
                 label.style.fontSize = 12;
                 label.style.flexGrow = 1f;
-                label.tooltip = "parents: " + string.Join(",", log[r].Parents) + "\nfiles: " + (log[r].Changes?.Count ?? 0);
+                label.tooltip = string.Format(I18n.L(I18n.Keys.GraphTooltipParents), string.Join(",", log[r].Parents))
+                    + "\n" + string.Format(I18n.L(I18n.Keys.GraphTooltipFiles), log[r].Changes?.Count ?? 0);
                 rowEl.Add(label);
 
                 var row = r;

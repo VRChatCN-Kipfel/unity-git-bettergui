@@ -30,7 +30,7 @@ namespace KF.GitUI
         public static void Open()
         {
             var w = GetWindow<GitWindow>();
-            w.titleContent = new GUIContent("Git Better GUI");
+            w.titleContent = new GUIContent(I18n.L(I18n.Keys.WindowTitle));
             w.minSize = new Vector2(900, 500);
             w.Show();
         }
@@ -138,6 +138,18 @@ namespace KF.GitUI
                 if (RowPrinter.DecideLongEdge(29, 20, 0, 29) != RowPrinter.RenderKind.Segment)
                     throw new System.Exception("SMOKE FAIL: DecideLongEdge Segment");
 
+                // 8) i18n 键表（缺失键返回键名可抓漏；使用中的键全部有值；格式键可格式化）
+                if (I18n.L(I18n.Keys.WindowTitle) != "Git Better GUI")
+                    throw new System.Exception("SMOKE FAIL: i18n WindowTitle");
+                if (I18n.L("definitely.missing.key") != "definitely.missing.key")
+                    throw new System.Exception("SMOKE FAIL: i18n missing-key fallback");
+                if (!I18n.L(I18n.Keys.GraphStatusFormat).Contains("{0}"))
+                    throw new System.Exception("SMOKE FAIL: i18n status format key");
+                if (I18n.L(I18n.Keys.ChangesToParent, "abc1234") != "Changes to parent abc1234")
+                    throw new System.Exception("SMOKE FAIL: i18n ChangesToParent format");
+                if (I18n.L(I18n.Keys.NoMergeConflicts) != "✓ no merge conflicts")
+                    throw new System.Exception("SMOKE FAIL: i18n merge-conflict-free key");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -166,7 +178,7 @@ namespace KF.GitUI
             }
             catch (Exception ex)
             {
-                graphStatus.text = "Git unavailable: " + ex.Message;
+                graphStatus.text = I18n.L(I18n.Keys.GitUnavailable, ex.Message);
                 Debug.LogWarning("[gitui] " + ex);
             }
         }
@@ -235,7 +247,8 @@ namespace KF.GitUI
             }
 
             graphTable.SetData(logEntries, printer, refsByCommit);
-            graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · {refs?.Count ?? 0} refs · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
+            graphStatus.text = I18n.L(I18n.Keys.GraphStatusFormat, logEntries.Count, layout.LaneCount,
+                refs?.Count ?? 0, logEntries[0].ShortID, logEntries[0].Summary);
         }
 
         private void ShowCommitDetail(int row)
@@ -258,7 +271,7 @@ namespace KF.GitUI
                 // merge/root：git log --name-status 不出 diff，按需补载
                 // 异步（JetBrains FullCommitDetailsListPanel 后台加载语义）：先 "loading…"，
                 // 后台跑 git（进程不阻塞主线程，含缓存），完成后回主线程渲染（选中已变则丢弃）。
-                changesList.Add(MutedLabel("loading changes…"));
+                changesList.Add(MutedLabel(I18n.L(I18n.Keys.LoadingChanges)));
                 var ctx = System.Threading.SynchronizationContext.Current;
                 System.Threading.Tasks.Task.Run(() =>
                 {
@@ -288,7 +301,7 @@ namespace KF.GitUI
             var parents = e.Parents;
             if (extra == null)
             {
-                changesList.Add(new Label("  (no file changes parsed)"));
+                changesList.Add(new Label("  " + I18n.L(I18n.Keys.NoChangesParsed)));
                 return;
             }
             if (parents == null || parents.Count == 0)
@@ -299,19 +312,19 @@ namespace KF.GitUI
                     l.style.fontSize = 12;
                     changesList.Add(l);
                 }
-                changesList.Add(MutedLabel("  (root commit — full tree vs empty)"));
+                changesList.Add(MutedLabel(I18n.L(I18n.Keys.RootCommitNote)));
                 return;
             }
             if (parents.Count > 1)
             {
                 // 合并视图在前
                 if (extra.Combined.Count == 0)
-                    changesList.Add(MutedLabel("  ✓ no merge conflicts"));
+                    changesList.Add(MutedLabel(I18n.L(I18n.Keys.NoMergeConflicts)));
                 else
                 {
                     foreach (var (status, path) in extra.Combined)
                     {
-                        var l = new Label($"  {status}  {path}   (all parents)");
+                        var l = new Label($"  {status}  {path}   {I18n.L(I18n.Keys.AllParents)}");
                         l.style.fontSize = 12;
                         changesList.Add(l);
                     }
@@ -320,7 +333,7 @@ namespace KF.GitUI
                 for (var i = 0; i < extra.PerParent.Count && i < parents.Count; i++)
                 {
                     var parentShort = parents[i].Length >= 7 ? parents[i].Substring(0, 7) : parents[i];
-                    changesList.Add(MutedLabel($"Changes to parent {parentShort}"));
+                    changesList.Add(MutedLabel(I18n.L(I18n.Keys.ChangesToParent, parentShort)));
                     foreach (var (status, path) in extra.PerParent[i])
                     {
                         var l = new Label($"   {status}  {path}");
@@ -330,7 +343,7 @@ namespace KF.GitUI
                 }
                 return;
             }
-            changesList.Add(new Label("  (no file changes parsed)"));
+            changesList.Add(new Label("  " + I18n.L(I18n.Keys.NoChangesParsed)));
         }
 
         private static Label MutedLabel(string text)
@@ -348,7 +361,7 @@ namespace KF.GitUI
 
             // 左：图谱表格（图谱 + 消息同行同格）
             var graphPane = new VisualElement();
-            graphStatus = new Label("loading…");
+            graphStatus = new Label(I18n.L(I18n.Keys.GraphLoading));
             graphPane.Add(graphStatus);
             var graphScroll = new ScrollView(ScrollViewMode.Vertical);
             graphTable = new GraphTable();
@@ -363,7 +376,7 @@ namespace KF.GitUI
             changesList = new ScrollView(ScrollViewMode.Vertical);
             inner.Add(changesList);
             var detailScroll = new ScrollView(ScrollViewMode.Vertical);
-            detailText = new Label("select a commit");
+            detailText = new Label(I18n.L(I18n.Keys.SelectACommit));
             detailText.style.whiteSpace = WhiteSpace.Normal;
             detailText.style.paddingLeft = 6;
             detailText.style.paddingRight = 6;
