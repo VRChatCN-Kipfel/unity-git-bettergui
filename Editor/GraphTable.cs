@@ -36,7 +36,10 @@ namespace KF.GitUI
             style.flexDirection = FlexDirection.Row;
             graphColumn = new VisualElement();
             graphColumn.generateVisualContent += PaintGraph;
-            graphColumn.style.alignSelf = Align.FlexStart;
+            // 图谱列 = 绝对定位覆盖层：不占布局宽度，行文本按"本行实际泳道"缩进（JetBrains per-cell graphWidth）
+            graphColumn.style.position = Position.Absolute;
+            graphColumn.style.left = 0f;
+            graphColumn.style.top = 0f;
             graphColumn.RegisterCallback<ClickEvent>(OnGraphClicked);
             messageColumn = new VisualElement();
             messageColumn.style.flexGrow = 1f;
@@ -59,11 +62,27 @@ namespace KF.GitUI
             printer = rowPrinter;
             selectedRow = -1;
 
-            // 图谱列宽度 = 全表最大元素数 * lane 宽 + 余量（保持一致对齐）
+            // 图谱列宽度 = 全表最大元素数 * lane 宽 + 余量（绘制/选中条用；文本缩进按每行实际泳道）
             var maxElements = 1;
             for (var r = 0; r < printer.Rows; r++)
                 if (printer.RowElementCount(r) > maxElements) maxElements = printer.RowElementCount(r);
             graphWidthPx = (int)(LaneWidth * (maxElements + 1)) + 8;
+
+            // 每行文本缩进 = 该行实际绘制的最右 x（节点泳道 lane、边的 lane/槽位），标题实时靠拢（JetBrains per-cell graphWidth）
+            var rowOffsets = new float[log.Count];
+            for (var r = 0; r < printer.Rows; r++)
+            {
+                var maxX = printer.LayoutIndex(r); // 节点画在泳道 x
+                foreach (var e in printer.GetEdgesInRow(r))
+                {
+                    var fromNode = e.IsDown ? e.UpNode : e.DownNode;
+                    var fromX = fromNode == r ? printer.LayoutIndex(r) : e.FromPosition;
+                    var toX = e.NodeTargetRow >= 0 ? printer.LayoutIndex(e.NodeTargetRow) : e.ToPosition;
+                    if (fromX > maxX) maxX = fromX;
+                    if (toX > maxX) maxX = toX;
+                }
+                rowOffsets[r] = (maxX + 1) * LaneWidth;
+            }
 
             Clear();
             Add(graphColumn);
@@ -81,6 +100,7 @@ namespace KF.GitUI
                 rowEl.style.flexDirection = FlexDirection.Row;
                 rowEl.style.height = RowHeight;
                 rowEl.style.alignItems = Align.Center;
+                rowEl.style.paddingLeft = rowOffsets[r]; // 文本区从本行实际泳道尽头开始
 
                 if (refsByCommit != null && refsByCommit.TryGetValue(log[r].CommitID, out var refs))
                 {
