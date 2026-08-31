@@ -36,8 +36,8 @@ namespace KF.GitUI
                 [Keys.NoChangesParsed] = "(no file changes parsed)",
                 [Keys.RootCommitNote] = "(root commit — full tree vs empty)",
                 [Keys.NoMergeConflicts] = "✓ no merge conflicts",
-                [Keys.AllParents] = "(all parents)",
                 [Keys.ChangesToParent] = "Changes to parent {0}",
+                [Keys.SectionMerged] = "Merged (all parents)",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

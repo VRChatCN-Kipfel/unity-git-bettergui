@@ -25,8 +25,8 @@ namespace KF.GitUI
         public const string NoChangesParsed = "ui.detail.noChangesParsed";
         public const string RootCommitNote = "ui.detail.rootCommitNote";
         public const string NoMergeConflicts = "ui.detail.noMergeConflicts";
-        public const string AllParents = "ui.detail.allParents";
         public const string ChangesToParent = "ui.detail.changesToParent"; // {0}=父提交短号
+        public const string SectionMerged = "ui.detail.sectionMerged";
         }
     }
 }

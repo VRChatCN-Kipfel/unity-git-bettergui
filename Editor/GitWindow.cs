@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
@@ -21,7 +22,7 @@ namespace KF.GitUI
         private List<GitLogEntry> logEntries = new List<GitLogEntry>();
         private GraphTable graphTable;
         private Label graphStatus;
-        private ScrollView changesList;
+        private ChangesTree changesTree;
         private Label detailText;
         private string lastFingerprint;
         private double lastFingerprintCheck;
@@ -150,6 +151,55 @@ namespace KF.GitUI
                 if (I18n.L(I18n.Keys.NoMergeConflicts) != "✓ no merge conflicts")
                     throw new System.Exception("SMOKE FAIL: i18n merge-conflict-free key");
 
+                // 9) 改动树：目录分组（目录在前、文件在后、组内名序）+ staged 聚合 + 分节顺序/OpsPath
+                var diffs = ChangesTree.BuildFromDiffs(new List<(char, string)>
+                {
+                    ('M', "Assets/A.cs"), ('A', "Assets/Sub/B.cs"), ('D', "README.md")
+                });
+                var grp = ChangesTree.Group(diffs);
+                if (grp.Count != 2)
+                    throw new System.Exception($"SMOKE FAIL: group roots={grp.Count} expect 2");
+                if (!grp[0].data.IsDirectory || grp[0].data.Path != "Assets")
+                    throw new System.Exception("SMOKE FAIL: group root0 != Assets dir");
+                if (grp[1].data.IsDirectory || grp[1].data.Path != "README.md")
+                    throw new System.Exception("SMOKE FAIL: group root1 != README.md file");
+                var ac = grp[0].children.ToList();
+                if (ac.Count != 2 || !ac[0].data.IsDirectory || ac[0].data.Path != "Assets/Sub"
+                    || ac[1].data.Path != "Assets/A.cs")
+                    throw new System.Exception("SMOKE FAIL: Assets children != [Sub, A.cs]");
+                // 双列状态文本（index+worktree 合并）
+                var am = ChangesTree.FromEntry(new GitStatusEntry("x.txt", "x.txt", "p",
+                    GitFileStatus.Added, GitFileStatus.Modified));
+                if (am.StatusText != "AM" || !am.IsStaged)
+                    throw new System.Exception("SMOKE FAIL: status AM / staged");
+                // staged 聚合：全 staged -> 目录 staged；有未暂存 -> 目录未暂存
+                var stagedGrp = ChangesTree.Group(ChangesTree.BuildFromEntries(new List<GitStatusEntry>
+                {
+                    new GitStatusEntry("Assets/a.txt", "Assets/a.txt", "p", GitFileStatus.Modified, GitFileStatus.None),
+                }));
+                if (!stagedGrp[0].data.IsStaged)
+                    throw new System.Exception("SMOKE FAIL: dir staged aggregation");
+                var unstagedGrp = ChangesTree.Group(ChangesTree.BuildFromEntries(new List<GitStatusEntry>
+                {
+                    new GitStatusEntry("Assets/b.txt", "Assets/b.txt", "p", GitFileStatus.None, GitFileStatus.Modified),
+                }));
+                if (unstagedGrp[0].data.IsStaged)
+                    throw new System.Exception("SMOKE FAIL: dir unstaged aggregation");
+                // 分节（merge 每父分组语义）：顺序保留 + OpsPath=真实路径
+                var sections = ChangesTree.BuildSectioned(new List<(string, List<ChangeItem>)>
+                {
+                    ("Changes to parent 810e7c4",
+                        ChangesTree.BuildFromDiffs(new List<(char, string)> { ('M', "featY.txt") })),
+                    ("Changes to parent 58c902b",
+                        ChangesTree.BuildFromDiffs(new List<(char, string)> { ('A', "Assets/New.cs") })),
+                });
+                if (sections.Count != 2 || sections[0].data.Path != "Changes to parent 810e7c4"
+                    || sections[1].data.Path != "Changes to parent 58c902b")
+                    throw new System.Exception("SMOKE FAIL: section order");
+                var secFile = sections[0].children.First();
+                if (secFile.data.OpsPath != "featY.txt" || secFile.data.Path != "Changes to parent 810e7c4/featY.txt")
+                    throw new System.Exception("SMOKE FAIL: section OpsPath");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -255,23 +305,19 @@ namespace KF.GitUI
         {
             if (row < 0 || row >= logEntries.Count) return;
             var e = logEntries[row];
-            changesList.Clear();
+            changesTree.SetFiles(null);
+            changesTree.SetHint("");
             var changes = e.Changes;
             if (changes != null && changes.Count > 0)
             {
-                foreach (var c in changes)
-                {
-                    var l = new Label($"  {c.Status,-12} {c.path}");
-                    l.style.fontSize = 12;
-                    changesList.Add(l);
-                }
+                changesTree.SetFiles(ChangesTree.BuildFromEntries(changes));
             }
             else
             {
                 // merge/root：git log --name-status 不出 diff，按需补载
                 // 异步（JetBrains FullCommitDetailsListPanel 后台加载语义）：先 "loading…"，
                 // 后台跑 git（进程不阻塞主线程，含缓存），完成后回主线程渲染（选中已变则丢弃）。
-                changesList.Add(MutedLabel(I18n.L(I18n.Keys.LoadingChanges)));
+                changesTree.SetHint(I18n.L(I18n.Keys.LoadingChanges));
                 var ctx = System.Threading.SynchronizationContext.Current;
                 System.Threading.Tasks.Task.Run(() =>
                 {
@@ -281,7 +327,6 @@ namespace KF.GitUI
                         ctx?.Post(_ =>
                         {
                             if (graphTable.SelectedRow != row) return; // 过期结果丢弃
-                            changesList.Clear();
                             RenderChanges(cc, e);
                         }, null);
                     }
@@ -298,60 +343,38 @@ namespace KF.GitUI
         /// <summary>渲染按需加载的变更（JetBrains 语义：合并视图在前 + 每父一组 "Changes to parent <hash>"）。</summary>
         private void RenderChanges(GitSession.CommitChanges extra, GitLogEntry e)
         {
-            var parents = e.Parents;
             if (extra == null)
             {
-                changesList.Add(new Label("  " + I18n.L(I18n.Keys.NoChangesParsed)));
+                changesTree.SetFiles(null);
+                changesTree.SetHint(I18n.L(I18n.Keys.NoChangesParsed));
                 return;
             }
+            var parents = e.Parents;
             if (parents == null || parents.Count == 0)
             {
-                foreach (var (status, path) in extra.Combined)
-                {
-                    var l = new Label($"  {status}  {path}");
-                    l.style.fontSize = 12;
-                    changesList.Add(l);
-                }
-                changesList.Add(MutedLabel(I18n.L(I18n.Keys.RootCommitNote)));
+                // root 提交：全树 vs 空树
+                changesTree.SetFiles(ChangesTree.BuildFromDiffs(extra.Combined));
+                changesTree.SetHint(I18n.L(I18n.Keys.RootCommitNote));
                 return;
             }
             if (parents.Count > 1)
             {
-                // 合并视图在前
-                if (extra.Combined.Count == 0)
-                    changesList.Add(MutedLabel(I18n.L(I18n.Keys.NoMergeConflicts)));
-                else
-                {
-                    foreach (var (status, path) in extra.Combined)
-                    {
-                        var l = new Label($"  {status}  {path}   {I18n.L(I18n.Keys.AllParents)}");
-                        l.style.fontSize = 12;
-                        changesList.Add(l);
-                    }
-                }
-                // 每父一组（JetBrains "Changes to parent <hash> <subject…>"）
+                // 合并视图在前（相对全部父），每父一组（相对第 i 父）
+                var sections = new List<(string, List<ChangeItem>)>();
+                if (extra.Combined.Count > 0)
+                    sections.Add((I18n.L(I18n.Keys.SectionMerged), ChangesTree.BuildFromDiffs(extra.Combined)));
                 for (var i = 0; i < extra.PerParent.Count && i < parents.Count; i++)
                 {
                     var parentShort = parents[i].Length >= 7 ? parents[i].Substring(0, 7) : parents[i];
-                    changesList.Add(MutedLabel(I18n.L(I18n.Keys.ChangesToParent, parentShort)));
-                    foreach (var (status, path) in extra.PerParent[i])
-                    {
-                        var l = new Label($"   {status}  {path}");
-                        l.style.fontSize = 12;
-                        changesList.Add(l);
-                    }
+                    sections.Add((I18n.L(I18n.Keys.ChangesToParent, parentShort),
+                        ChangesTree.BuildFromDiffs(extra.PerParent[i])));
                 }
+                changesTree.SetFilesSectioned(sections);
+                changesTree.SetHint(extra.Combined.Count == 0 ? I18n.L(I18n.Keys.NoMergeConflicts) : "");
                 return;
             }
-            changesList.Add(new Label("  " + I18n.L(I18n.Keys.NoChangesParsed)));
-        }
-
-        private static Label MutedLabel(string text)
-        {
-            var l = new Label("  " + text);
-            l.style.fontSize = 11;
-            l.style.color = new Color(0.62f, 0.62f, 0.62f);
-            return l;
+            changesTree.SetFiles(null);
+            changesTree.SetHint(I18n.L(I18n.Keys.NoChangesParsed));
         }
 
         private VisualElement BuildLayout()
@@ -370,11 +393,11 @@ namespace KF.GitUI
             graphPane.Add(graphScroll);
             outer.Add(graphPane);
 
-            // 右：上 改动文件列表 / 下 提交详情
+            // 右：上 改动文件树 / 下 提交详情
             var inner = new TwoPaneSplitView(0, 260, TwoPaneSplitViewOrientation.Vertical);
             inner.name = "inner-split";
-            changesList = new ScrollView(ScrollViewMode.Vertical);
-            inner.Add(changesList);
+            changesTree = new ChangesTree(ChangesTree.Mode.ReadOnly);
+            inner.Add(changesTree);
             var detailScroll = new ScrollView(ScrollViewMode.Vertical);
             detailText = new Label(I18n.L(I18n.Keys.SelectACommit));
             detailText.style.whiteSpace = WhiteSpace.Normal;
