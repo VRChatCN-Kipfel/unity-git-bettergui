@@ -233,6 +233,17 @@ namespace KF.GitUI
                 if (GitWindow.BuildCommitContextActions(s, log, 999, () => { }).Any())
                     throw new System.Exception("SMOKE FAIL: commit menu out-of-range should be empty");
 
+                // 13) Commit 数据通道：状态解析 + gpg 探测（stderr 子串）
+                var status = s.LoadStatus();
+                if (string.IsNullOrEmpty(status.LocalBranch))
+                    throw new System.Exception("SMOKE FAIL: status localBranch empty");
+                if (status.Entries == null)
+                    throw new System.Exception("SMOKE FAIL: status entries null");
+                if (!GitSession.DetectGpgError("error: gpg failed to sign the data\nfatal: writing commit object failed"))
+                    throw new System.Exception("SMOKE FAIL: gpg detect missed");
+                if (GitSession.DetectGpgError("fatal: empty commit message"))
+                    throw new System.Exception("SMOKE FAIL: gpg detect false positive");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");

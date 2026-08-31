@@ -325,6 +325,55 @@ namespace KF.GitUI
                 + (string.IsNullOrEmpty(err) ? " (exit code non-zero)" : ":\n" + err));
         }
 
+        /// <summary>
+        /// 工作区状态（status -b -u --porcelain）：localBranch/remoteBranch/ahead/behind + entries(X/Y)。
+        /// 未使用缓存：窗口按 1.5s 指纹节流重建，Commit 页操作后主动重载。
+        /// </summary>
+        public GitStatus LoadStatus()
+        {
+            var task = new GitStatusTask(platform, new GitObjectFactory(environment))
+                .Configure(platform.ProcessManager);
+            var result = task.RunSynchronously();
+            if (!task.Successful)
+                throw new InvalidOperationException("git status failed" +
+                    (string.IsNullOrEmpty(task.Errors) ? "" : ":\n" + task.Errors));
+            return result;
+        }
+
+        /// <summary>暂存指定路径（git add -- paths；含未跟踪文件）。</summary>
+        public void Stage(IEnumerable<string> paths)
+        {
+            RunOp("git add", new GitAddTask(platform, paths).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>取消暂存（git reset HEAD -- paths；不丢工作区改动）。</summary>
+        public void Unstage(IEnumerable<string> paths)
+        {
+            RunOp("git reset HEAD", new GitRemoveFromIndexTask(platform, paths).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>撤销工作区改动到 HEAD（git checkout -- paths；危险操作由 UI 层确认）。</summary>
+        public void Discard(IEnumerable<string> paths)
+        {
+            RunOp("git checkout --", new GitCheckoutPathsTask(platform, paths).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>提交（git commit -F 临时消息文件 + flaga；失败抛 stderr（含 gpg 探测）。</summary>
+        public void Commit(string message, string body, bool amend, bool signoff, bool noVerify)
+        {
+            RunOp("git commit",
+                new GitCommitTaskEx(platform, message, body, amend, signoff, noVerify)
+                    .Configure(platform.ProcessManager));
+        }
+
+        /// <summary>提交失败 stderr 探测：gpg 不可用/未解锁（gpgsign=true 环境常见）。</summary>
+        public static bool DetectGpgError(string errors)
+        {
+            return errors != null
+                && (errors.Contains("gpg failed to sign the data", StringComparison.Ordinal)
+                    || errors.Contains("failed to sign the data", StringComparison.Ordinal));
+        }
+
         /// <summary>重置当前分支到指定提交（--soft/--mixed/--hard，带确认由 UI 层负责）。</summary>
         public void ResetTo(string hash, GitResetMode mode)
         {
