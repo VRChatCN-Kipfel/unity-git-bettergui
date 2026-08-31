@@ -46,6 +46,30 @@ namespace KF.GitUI
         public const string DialogOk = "dialog.ok";
         public const string DialogCancel = "dialog.cancel";
         public const string MenuOpFailedTitle = "dialog.opFailedTitle";
+
+        // -- 窗口 Tab / Commit 页 --
+        public const string TabLog = "tab.log";
+        public const string TabCommit = "tab.commit";
+        public const string CommitSummaryLabel = "commit.summaryLabel";
+        public const string CommitBodyLabel = "commit.bodyLabel";
+        public const string CommitAmend = "commit.amend";
+        public const string CommitSignoff = "commit.signoff";
+        public const string CommitNoVerify = "commit.noVerify";
+        public const string CommitButton = "commit.commit";
+        public const string CommitRefresh = "commit.refresh";
+        public const string CommitClean = "commit.clean";
+        public const string CommitGpgHint = "commit.gpgHint";
+
+        // -- 文件/目录语境右键 --
+        public const string MenuStage = "menu.stage";
+        public const string MenuUnstage = "menu.unstage";
+        public const string MenuStageAll = "menu.stageAll";
+        public const string MenuUnstageAll = "menu.unstageAll";
+        public const string MenuRevertFile = "menu.revertFile";
+        public const string MenuDiscardConfirm = "menu.discardConfirm"; // {0}=路径或文件数
+        public const string MenuDiscardCount = "menu.discardCount"; // {0}=文件数
+        public const string MenuOpen = "menu.open";
+        public const string MenuCopyPath = "menu.copyPath";
         }
     }
 }

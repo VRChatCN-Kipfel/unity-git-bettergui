@@ -56,6 +56,28 @@ namespace KF.GitUI
                 [Keys.DialogOk] = "OK",
                 [Keys.DialogCancel] = "Cancel",
                 [Keys.MenuOpFailedTitle] = "Git operation failed",
+                // -- 窗口 Tab / Commit 页 --
+                [Keys.TabLog] = "Log",
+                [Keys.TabCommit] = "Commit",
+                [Keys.CommitSummaryLabel] = "Summary",
+                [Keys.CommitBodyLabel] = "Description",
+                [Keys.CommitAmend] = "Amend",
+                [Keys.CommitSignoff] = "Sign off",
+                [Keys.CommitNoVerify] = "No verify (skip hooks)",
+                [Keys.CommitButton] = "Commit",
+                [Keys.CommitRefresh] = "Refresh",
+                [Keys.CommitClean] = "Working tree clean",
+                [Keys.CommitGpgHint] = "GPG signing failed — check gpg-agent / private key, or disable signing.",
+                // -- 文件/目录语境右键 --
+                [Keys.MenuStage] = "Stage",
+                [Keys.MenuUnstage] = "Unstage",
+                [Keys.MenuStageAll] = "Stage All",
+                [Keys.MenuUnstageAll] = "Unstage All",
+                [Keys.MenuRevertFile] = "Revert (discard changes)",
+                [Keys.MenuDiscardConfirm] = "Discard changes for {0}?\n\nThis cannot be undone.",
+                [Keys.MenuDiscardCount] = "{0} files",
+                [Keys.MenuOpen] = "Open",
+                [Keys.MenuCopyPath] = "Copy Path",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

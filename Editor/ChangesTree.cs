@@ -42,6 +42,11 @@ namespace KF.GitUI
         /// <summary>单选变化。</summary>
         public event Action<ChangeItem> SelectionChanged;
 
+        /// <summary>文件/目录语境右键动作源（行 userData 定位；null = 无菜单）。</summary>
+        public Func<ChangeItem, IEnumerable<IGitContextAction>> ContextActionProvider;
+
+        private static readonly IGitContextAction[] NoActions = new IGitContextAction[0];
+
         public ChangeItem SelectedItem { get; private set; }
 
         public ChangesTree(Mode mode)
@@ -289,6 +294,9 @@ namespace KF.GitUI
             nameLabel.style.flexGrow = 1f;
             nameLabel.style.textOverflow = TextOverflow.Ellipsis;
             row.Add(nameLabel);
+
+            GitContextMenu.Attach(row, () =>
+                row.userData is ChangeItem ci ? (ContextActionProvider?.Invoke(ci) ?? NoActions) : NoActions);
 
             return row;
         }

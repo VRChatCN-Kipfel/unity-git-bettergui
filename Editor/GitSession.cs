@@ -32,6 +32,7 @@ namespace KF.GitUI
 
         public IGitEnvironment Environment => environment;
         public IPlatform Platform => platform;
+        public string ProjectPath => projectPath;
 
         private GitSession(IGitEnvironment env, IPlatform p, string projectPath)
         {

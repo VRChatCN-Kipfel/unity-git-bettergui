@@ -47,6 +47,7 @@ namespace KF.GitUI
             var root = new GitWindow().BuildLayout();
             var outer = root.Q<TwoPaneSplitView>("outer-split");
             var inner = root.Q<TwoPaneSplitView>("inner-split");
+            UnityEngine.Debug.Log($"[gitui] SMOKE diag: outer={outer?.childCount ?? -1} inner={inner?.childCount ?? -1} toolbar={(root.Q<VisualElement>("toolbar") != null)}");
             if (outer == null || inner == null || outer.childCount != 2 || inner.childCount != 2)
                 throw new System.Exception("SMOKE FAIL: layout tree incomplete");
 
@@ -244,6 +245,37 @@ namespace KF.GitUI
                 if (GitSession.DetectGpgError("fatal: empty commit message"))
                     throw new System.Exception("SMOKE FAIL: gpg detect false positive");
 
+                // 14) Commit 页结构 + 文件/目录语境右键（静态 Builder 断言）
+                if (root.Q<VisualElement>("toolbar") == null
+                    || root.Q<Button>("tab-log") == null || root.Q<Button>("tab-commit") == null
+                    || root.Q<VisualElement>("page-log") == null || root.Q<VisualElement>("page-commit") == null)
+                    throw new System.Exception("SMOKE FAIL: tabs structure");
+                if (root.Q<ChangesTree>("commit-tree") == null || root.Q<TextField>("msg-summary") == null)
+                    throw new System.Exception("SMOKE FAIL: commit page fields");
+                var dirEntry = status.Entries.FirstOrDefault(en => en.path.Contains('/'));
+                var dirPath = string.IsNullOrEmpty(dirEntry.path) ? null : dirEntry.path;
+                if (!string.IsNullOrEmpty(dirPath))
+                {
+                    var dirName = dirPath.Substring(0, dirPath.IndexOf('/'));
+                    var dirItem = new ChangeItem { Path = dirName, IsDirectory = true };
+                    var dirTexts = GitWindow.BuildFileContextActions(s, dirItem, status.Entries, false, () => { })
+                        .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                    if (!dirTexts.Contains("Stage All") || !dirTexts.Contains("Unstage All")
+                        || !dirTexts.Contains("Revert (discard changes)") || !dirTexts.Contains("Open")
+                        || !dirTexts.Contains("Copy Path"))
+                        throw new System.Exception("SMOKE FAIL: dir context actions");
+                    var fileItem = ChangesTree.FromEntry(status.Entries[0]);
+                    var fileTexts = GitWindow.BuildFileContextActions(s, fileItem, status.Entries, false, () => { })
+                        .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                    if (!fileTexts.Contains(fileItem.IsStaged ? "Unstage" : "Stage")
+                        || !fileTexts.Contains("Open") || !fileTexts.Contains("Copy Path"))
+                        throw new System.Exception("SMOKE FAIL: file context actions");
+                    var roTexts = GitWindow.BuildFileContextActions(s, fileItem, null, true, () => { })
+                        .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                    if (roTexts.Contains("Stage") || roTexts.Contains("Unstage") || !roTexts.Contains("Open"))
+                        throw new System.Exception("SMOKE FAIL: read-only context leaks ops");
+                }
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -264,6 +296,242 @@ namespace KF.GitUI
         private IEnumerable<IGitContextAction> ContextProvider(int row)
         {
             return BuildCommitContextActions(session, logEntries, row, RefreshData);
+        }
+
+        // ---- Commit 页逻辑 ---- //
+
+        private void OnWorkingTreeToggle(ChangeItem item, bool staged)
+        {
+            var paths = new List<string>();
+            if (item.IsDirectory)
+            {
+                var prefix = item.Path + "/";
+                foreach (var en in workingEntries)
+                    if (en.path.StartsWith(prefix, StringComparison.Ordinal))
+                        paths.Add(en.path);
+            }
+            else
+            {
+                paths.Add(item.OpsPath ?? item.Path);
+            }
+            if (paths.Count == 0) return;
+
+            if (staged) RunStatusOp(() => session.Stage(paths));
+            else RunStatusOp(() => session.Unstage(paths));
+        }
+
+        /// <summary>后台执行暂存/取消暂存，完成后回主线程刷新状态树。</summary>
+        private void RunStatusOp(Action op)
+        {
+            commitButton.SetEnabled(false);
+            var ctx = System.Threading.SynchronizationContext.Current;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    op();
+                    ctx?.Post(_ => RefreshWorkingStatus(), null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ =>
+                    {
+                        SetCommitError(ex.Message);
+                        RefreshWorkingStatus();
+                    }, null);
+                }
+            });
+        }
+
+        /// <summary>重载工作区状态（后台 git status → 勾选树；Commit 页首开/操作后/提交后调用）。</summary>
+        private void RefreshWorkingStatus()
+        {
+            if (session == null) return;
+            commitTree.SetHint(I18n.L(I18n.Keys.LoadingChanges));
+            var ctx = System.Threading.SynchronizationContext.Current;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    var st = session?.LoadStatus();
+                    var entries = st?.Entries ?? new List<GitStatusEntry>();
+                    ctx?.Post(_ =>
+                    {
+                        workingEntries = entries;
+                        commitTree.SetFiles(ChangesTree.BuildFromEntries(entries));
+                        commitTree.SetHint(entries.Count == 0 ? I18n.L(I18n.Keys.CommitClean) : "");
+                        UpdateCommitButton();
+                    }, null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ => SetCommitError(ex.Message), null);
+                }
+            });
+        }
+
+        private void UpdateCommitButton()
+        {
+            if (commitButton == null) return;
+            var hasSummary = msgSummary != null && msgSummary.value.Trim().Length > 0;
+            var anyStaged = false;
+            foreach (var en in workingEntries)
+                if (en.Staged) { anyStaged = true; break; }
+            commitButton.SetEnabled(hasSummary && anyStaged);
+        }
+
+        private void SetCommitError(string message)
+        {
+            if (commitError == null) return;
+            commitError.text = message ?? string.Empty;
+        }
+
+        private void CommitNow()
+        {
+            var summary = msgSummary.value.Trim();
+            if (summary.Length == 0) return;
+            commitButton.SetEnabled(false);
+            SetCommitError("");
+            var amend = optAmend.value;
+            var signoff = optSignoff.value;
+            var noVerify = optNoVerify.value;
+            var body = msgBody.value ?? string.Empty;
+            var ctx = System.Threading.SynchronizationContext.Current;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    session?.Commit(summary, body, amend, signoff, noVerify);
+                    ctx?.Post(_ =>
+                    {
+                        // 成功：历史+refs 全量刷新（自动刷新 1.5s 也会兜底），工作区状态重载，清空消息
+                        RefreshData();
+                        RefreshWorkingStatus();
+                        msgSummary.SetValueWithoutNotify("");
+                        msgBody.SetValueWithoutNotify("");
+                        SetCommitError("");
+                    }, null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ =>
+                    {
+                        var msg = ex.Message;
+                        if (GitSession.DetectGpgError(msg))
+                            msg += "\n" + I18n.L(I18n.Keys.CommitGpgHint);
+                        SetCommitError(msg);
+                        UpdateCommitButton();
+                    }, null);
+                }
+            });
+        }
+
+        // ---- 文件/目录语境右键 ---- //
+
+        private static bool IsUnder(string path, string dir)
+        {
+            return !string.IsNullOrEmpty(path) && path.StartsWith(dir + "/", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// 文件/目录语境右键动作（JetBrains Git.Stage.Tree.Menu 裁剪版）：
+        /// 文件 = Stage/Unstage（按当前暂存态）+ Revert(discard)/Open/Copy Path；
+        /// 目录 = Stage All/Unstage All（递归）+ Revert(discard)/Open/Copy Path；
+        /// readOnly（提交详情树）= 仅 Open/Copy Path。
+        /// </summary>
+        public static IEnumerable<IGitContextAction> BuildFileContextActions(GitSession session,
+            ChangeItem item, IReadOnlyList<GitStatusEntry> entries, bool readOnly, Action onMutated)
+        {
+            if (item == null) yield break;
+
+            var paths = new List<string>();
+            if (item.IsDirectory)
+            {
+                if (entries != null)
+                {
+                    var prefix = item.Path + "/";
+                    foreach (var en in entries)
+                        if (en.path.StartsWith(prefix, StringComparison.Ordinal))
+                            paths.Add(en.path);
+                }
+            }
+            else
+            {
+                paths.Add(item.OpsPath ?? item.Path);
+            }
+
+            if (!readOnly)
+            {
+                if (item.IsDirectory)
+                {
+                    var anyStaged = false;
+                    var anyCanStage = false;
+                    if (entries != null)
+                    {
+                        var prefix = item.Path + "/";
+                        foreach (var en in entries)
+                        {
+                            if (!en.path.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                            if (en.Staged) anyStaged = true;
+                            else if (en.WorkTreeStatus != GitFileStatus.None || en.Untracked) anyCanStage = true;
+                        }
+                    }
+                    var dirPaths = paths;
+                    yield return new DelegateAction("stage.all", I18n.L(I18n.Keys.MenuStageAll),
+                        () => RunFlow(() => session?.Stage(dirPaths), onMutated)) { Enabled = anyCanStage };
+                    yield return new DelegateAction("unstage.all", I18n.L(I18n.Keys.MenuUnstageAll),
+                        () => RunFlow(() => session?.Unstage(dirPaths), onMutated)) { Enabled = anyStaged };
+                }
+                else
+                {
+                    var staged = item.IsStaged;
+                    var single = paths;
+                    if (!staged)
+                        yield return new DelegateAction("stage", I18n.L(I18n.Keys.MenuStage),
+                            () => RunFlow(() => session?.Stage(single), onMutated));
+                    else
+                        yield return new DelegateAction("unstage", I18n.L(I18n.Keys.MenuUnstage),
+                            () => RunFlow(() => session?.Unstage(single), onMutated));
+                }
+                var discardPaths = paths;
+                var display = item.IsDirectory
+                    ? I18n.L(I18n.Keys.MenuDiscardCount, discardPaths.Count)
+                    : (item.OpsPath ?? item.Path);
+                yield return new DelegateAction("discard", I18n.L(I18n.Keys.MenuRevertFile),
+                    () => PromptDiscard(session, discardPaths, display, onMutated));
+                yield return GitContextSeparator.Instance;
+            }
+
+            yield return new DelegateAction("open", I18n.L(I18n.Keys.MenuOpen),
+                () => OpenFile(session, item));
+            yield return new DelegateAction("copy.path", I18n.L(I18n.Keys.MenuCopyPath),
+                () => GUIUtility.systemCopyBuffer = (item.OpsPath ?? item.Path));
+        }
+
+        private static void RunFlow(Action op, Action onMutated)
+        {
+            try
+            {
+                op();
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
+        }
+
+        private static void PromptDiscard(GitSession session, IReadOnlyList<string> paths, string display, Action onMutated)
+        {
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuRevertFile),
+                    I18n.L(I18n.Keys.MenuDiscardConfirm, display),
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            RunFlow(() => session?.Discard(paths), onMutated);
+        }
+
+        private static void OpenFile(GitSession session, ChangeItem item)
+        {
+            var opsPath = item.OpsPath ?? item.Path;
+            if (string.IsNullOrEmpty(opsPath) || session == null) return;
+            EditorUtility.OpenWithDefaultApp(session.ProjectPath + "/" + opsPath);
         }
 
         /// <summary>
@@ -427,6 +695,7 @@ namespace KF.GitUI
                 session = GitSession.Open(Environment.CurrentDirectory);
                 lastFingerprint = session.GetFingerprint();
                 RefreshData();
+                RefreshWorkingStatus();
             }
             catch (Exception ex)
             {
@@ -579,7 +848,68 @@ namespace KF.GitUI
             changesTree.SetHint(I18n.L(I18n.Keys.NoChangesParsed));
         }
 
+        private VisualElement pageLog;
+        private VisualElement pageCommit;
+        private Button tabLog;
+        private Button tabCommit;
+        private ChangesTree commitTree;
+        private TextField msgSummary;
+        private TextField msgBody;
+        private Toggle optAmend;
+        private Toggle optSignoff;
+        private Toggle optNoVerify;
+        private Label commitError;
+        private Button commitButton;
+        private List<GitStatusEntry> workingEntries = new List<GitStatusEntry>();
+
         private VisualElement BuildLayout()
+        {
+            var root = new VisualElement();
+            root.style.flexGrow = 1f;
+
+            // 顶部工具条：Log | Commit Tab（JetBrains VCS toolwindow tabs 语义）
+            var toolbar = new VisualElement();
+            toolbar.name = "toolbar";
+            toolbar.style.flexDirection = FlexDirection.Row;
+            toolbar.style.alignItems = Align.Center;
+            toolbar.style.paddingTop = 2;
+            toolbar.style.paddingLeft = 4;
+            tabLog = new Button(() => ActivateTab(0)) { text = I18n.L(I18n.Keys.TabLog) };
+            tabLog.name = "tab-log";
+            tabCommit = new Button(() => ActivateTab(1)) { text = I18n.L(I18n.Keys.TabCommit) };
+            tabCommit.name = "tab-commit";
+            toolbar.Add(tabLog);
+            toolbar.Add(tabCommit);
+            root.Add(toolbar);
+
+            // 页面容器：两个页面各自保留状态，仅切换 display
+            var pagesHost = new VisualElement();
+            pagesHost.name = "pages";
+            pagesHost.style.flexGrow = 1f;
+            pageLog = new VisualElement();
+            pageLog.name = "page-log";
+            pageLog.style.flexGrow = 1f;
+            pageLog.Add(BuildLogPage());
+            pageCommit = BuildCommitPage();
+            pageCommit.name = "page-commit";
+            pagesHost.Add(pageLog);
+            pagesHost.Add(pageCommit);
+            root.Add(pagesHost);
+
+            ActivateTab(0);
+            return root;
+        }
+
+        private void ActivateTab(int index)
+        {
+            pageLog.style.display = index == 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            pageCommit.style.display = index == 1 ? DisplayStyle.Flex : DisplayStyle.None;
+            tabLog.style.unityFontStyleAndWeight = index == 0 ? FontStyle.Bold : FontStyle.Normal;
+            tabCommit.style.unityFontStyleAndWeight = index == 1 ? FontStyle.Bold : FontStyle.Normal;
+            if (index == 1) RefreshWorkingStatus();
+        }
+
+        private VisualElement BuildLogPage()
         {
             var outer = new TwoPaneSplitView(0, 420, TwoPaneSplitViewOrientation.Horizontal);
             outer.name = "outer-split";
@@ -599,6 +929,9 @@ namespace KF.GitUI
             var inner = new TwoPaneSplitView(0, 260, TwoPaneSplitViewOrientation.Vertical);
             inner.name = "inner-split";
             changesTree = new ChangesTree(ChangesTree.Mode.ReadOnly);
+            // 提交详情树轻量右键（Open / Copy Path；只读无暂存/撤销）
+            changesTree.ContextActionProvider = item =>
+                BuildFileContextActions(session, item, null, true, null);
             inner.Add(changesTree);
             var detailScroll = new ScrollView(ScrollViewMode.Vertical);
             detailText = new Label(I18n.L(I18n.Keys.SelectACommit));
@@ -612,6 +945,79 @@ namespace KF.GitUI
             outer.Add(inner);
 
             return outer;
+        }
+
+        /// <summary>
+        /// Commit 页（JetBrains Commit toolwindow 语义）：左 = 工作区勾选树（勾选=暂存）；
+        /// 右 = 摘要/详情 + amend/signoff/no-verify + 提交按钮 + 错误条。
+        /// </summary>
+        private VisualElement BuildCommitPage()
+        {
+            var page = new VisualElement();
+            page.name = "page-commit";
+            page.style.flexGrow = 1f;
+
+            var split = new TwoPaneSplitView(0, 460, TwoPaneSplitViewOrientation.Horizontal);
+            split.name = "commit-split";
+
+            commitTree = new ChangesTree(ChangesTree.Mode.Checkable);
+            commitTree.name = "commit-tree";
+            commitTree.ToggleChanged += OnWorkingTreeToggle;
+            commitTree.ContextActionProvider = item =>
+                BuildFileContextActions(session, item, workingEntries, false, RefreshWorkingStatus);
+            split.Add(commitTree);
+
+            var editor = new VisualElement();
+            editor.style.flexDirection = FlexDirection.Column;
+            editor.style.flexGrow = 1f;
+            editor.style.paddingLeft = 6;
+            editor.style.paddingRight = 6;
+            editor.style.paddingTop = 4;
+            editor.style.paddingBottom = 4;
+
+            editor.Add(new Label(I18n.L(I18n.Keys.CommitSummaryLabel)));
+            msgSummary = new TextField();
+            msgSummary.name = "msg-summary";
+            msgSummary.RegisterValueChangedCallback(_ => UpdateCommitButton());
+            editor.Add(msgSummary);
+
+            editor.Add(new Label(I18n.L(I18n.Keys.CommitBodyLabel)));
+            msgBody = new TextField { multiline = true };
+            msgBody.style.height = 110;
+            msgBody.style.whiteSpace = WhiteSpace.Normal;
+            editor.Add(msgBody);
+
+            var opts = new VisualElement();
+            opts.style.flexDirection = FlexDirection.Row;
+            opts.style.paddingTop = 2;
+            opts.style.paddingBottom = 2;
+            optAmend = new Toggle(I18n.L(I18n.Keys.CommitAmend));
+            optSignoff = new Toggle(I18n.L(I18n.Keys.CommitSignoff));
+            optNoVerify = new Toggle(I18n.L(I18n.Keys.CommitNoVerify));
+            opts.Add(optAmend);
+            opts.Add(optSignoff);
+            opts.Add(optNoVerify);
+            editor.Add(opts);
+
+            var btns = new VisualElement();
+            btns.style.flexDirection = FlexDirection.Row;
+            btns.style.paddingTop = 2;
+            commitButton = new Button(CommitNow) { text = I18n.L(I18n.Keys.CommitButton) };
+            commitButton.SetEnabled(false);
+            var refreshBtn = new Button(RefreshWorkingStatus) { text = I18n.L(I18n.Keys.CommitRefresh) };
+            btns.Add(commitButton);
+            btns.Add(refreshBtn);
+            editor.Add(btns);
+
+            commitError = new Label();
+            commitError.style.color = new Color(0.88f, 0.32f, 0.32f);
+            commitError.style.whiteSpace = WhiteSpace.Normal;
+            commitError.style.paddingTop = 4;
+            editor.Add(commitError);
+
+            split.Add(editor);
+            page.Add(split);
+            return page;
         }
 
         private void OnDisable()
