@@ -102,6 +102,8 @@ namespace KF.GitUI
                     throw new System.Exception($"SMOKE FAIL: row0 edges={printer.GetEdgesInRow(0).Count} expect 2");
 
                 // 5) merge/root 变更按需加载（JetBrains DIFF_TO_PARENTS：合并视图 + 每父分组）
+                if (log[0].Parents.Count != 2)
+                    throw new System.Exception($"SMOKE FAIL: merge parents={log[0].Parents.Count} expect 2");
                 var mergeChanges = s.LoadChangesFor(log[0]);
                 if (mergeChanges == null || mergeChanges.PerParent.Count != 2)
                     throw new System.Exception("SMOKE FAIL: merge PerParent != 2 groups");
