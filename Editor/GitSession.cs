@@ -20,7 +20,11 @@ namespace KF.GitUI
     {
         private readonly IGitEnvironment environment;
         private readonly IPlatform platform;
+        // 提交变更缓存：git 对象内容寻址、不可变 -> 按提交 hash 缓存永不过期，只需内存上限（有界 FIFO 淘汰）。
+        // 会话级：窗口重开/刷新会重建 GitSession，缓存随之失效（历史/refs 的可变数据另靠事件失效）。
+        private const int ChangesCacheLimit = 512;
         private readonly Dictionary<string, CommitChanges> changesCache = new Dictionary<string, CommitChanges>();
+        private readonly Queue<string> changesCacheOrder = new Queue<string>();
         private readonly object cacheLock = new object();
 
         public IGitEnvironment Environment => environment;
@@ -119,7 +123,16 @@ namespace KF.GitUI
                     return null; // 常规提交已在 GitLogTask 中带
                 }
 
-                lock (cacheLock) changesCache[commitId] = result;
+                lock (cacheLock)
+                {
+                    changesCache[commitId] = result;
+                    changesCacheOrder.Enqueue(commitId);
+                    while (changesCacheOrder.Count > ChangesCacheLimit)
+                    {
+                        var evict = changesCacheOrder.Dequeue();
+                        changesCache.Remove(evict);
+                    }
+                }
                 return result;
             }
             catch (Exception)
