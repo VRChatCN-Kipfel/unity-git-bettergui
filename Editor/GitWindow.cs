@@ -56,6 +56,13 @@ namespace KF.GitUI
                 if (headShort != "810e7c4") throw new System.Exception($"SMOKE FAIL: head={headShort} expect 810e7c4");
                 if (mergeParents != 2) throw new System.Exception($"SMOKE FAIL: head parents={mergeParents} expect 2");
 
+                // 渲染回归防线：自绘元素必须拿到非零内容高度，否则在窗口里什么都不画
+                //（布局数学测不出像素，这里直接断言 style.height 已按行数撑开）
+                var contentHeight = graph.style.height.value.value;
+                var expectHeight = rows * CommitGraphElement.RowHeight;
+                if (contentHeight <= 0f || contentHeight != expectHeight)
+                    throw new System.Exception($"SMOKE FAIL: graph contentHeight={contentHeight} expect {expectHeight}");
+
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={rows} edges={edges} head={headEntry.ShortID} \"{headEntry.Summary}\" mergeParents={mergeParents}");
             }

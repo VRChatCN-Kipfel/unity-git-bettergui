@@ -57,6 +57,11 @@ namespace KF.GitUI
             commits.Clear();
             commits.AddRange(log);
             RebuildLayout();
+
+            // 关键：generateVisualContent 的自绘不参与布局。
+            // 不显式给高度的话元素在 ScrollView/面板里会塌成 0 高 -> 什么都不画（真实窗口中"纯文本"的根因）。
+            style.height = rows.Count * RowHeight;
+            MarkDirtyRepaint();   // 数据变更后强制重绘（元素可能已挂载）
         }
 
         /// <summary>纯布局计算（不依赖渲染）：供冒烟测试断言图谱结构。</summary>
