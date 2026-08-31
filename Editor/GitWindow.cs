@@ -56,6 +56,33 @@ namespace KF.GitUI
                 if (headShort != "810e7c4") throw new System.Exception($"SMOKE FAIL: head={headShort} expect 810e7c4");
                 if (mergeParents != 2) throw new System.Exception($"SMOKE FAIL: head parents={mergeParents} expect 2");
 
+                // ---- 引擎层（JetBrains 管线移植）冒烟：PermanentLinearGraph + GraphLayout 泳道 ----
+                // 期望泳道（按 GraphLayoutBuilder 栈式 DFS 手算，与 JetBrains layoutBuilder 测试同语义）：
+                // main 线与两条 feature 分支各占一泳道 -> [0,0,2,0,1,1,0,0,0]，LaneCount=3，唯一 head=row0
+                var commitIndex = new Dictionary<string, int>();
+                for (var i = 0; i < log.Count; i++) commitIndex[log[i].CommitID] = i;
+                var pGraph = PermanentLinearGraph.Build(log, commitIndex);
+                var layout = GraphLayout.Build(pGraph);
+                var expectedLanes = new[] { 0, 0, 2, 0, 1, 1, 0, 0, 0 };
+                var lanes = new int[pGraph.NodesCount];
+                for (var i = 0; i < pGraph.NodesCount; i++) lanes[i] = layout.GetLayoutIndex(i);
+                if (string.Join(",", lanes) != string.Join(",", expectedLanes))
+                {
+                    // 不匹配时输出对账信息（父/隐式标记/泳道）
+                    var dbg = new System.Text.StringBuilder("SMOKE FAIL: engine lanes=[" + string.Join(",", lanes) + "] expect [0,0,2,0,1,1,0,0,0]\n");
+                    for (var i = 0; i < pGraph.NodesCount; i++)
+                        dbg.AppendLine($"row{i} {log[i].ShortID}: parents=[{string.Join(",", pGraph.GetParentNodes(i))}] simple={pGraph.IsSimpleNode(i)} lane={lanes[i]}");
+                    throw new System.Exception(dbg.ToString());
+                }
+                // JetBrains 语义：线(head)数与泳道槽位数解耦。本仓库唯一 head=row0（main 尖），
+                // 但 DFS 回溯为 feature/x、feature/y 各开出新槽 -> 槽位 0..2。
+                if (layout.LaneCount != 1) throw new System.Exception($"SMOKE FAIL: engine LaneCount={layout.LaneCount} expect 1 (single head)");
+                var maxLane = 0;
+                for (var i = 0; i < lanes.Length; i++) if (lanes[i] > maxLane) maxLane = lanes[i];
+                if (maxLane != 2) throw new System.Exception($"SMOKE FAIL: engine maxLane={maxLane} expect 2 (3 lane slots)");
+                if (layout.GetHeadNodeIndexForLane(0) != 0 || layout.GetHeadNodeIndexForLane(2) != 0)
+                    throw new System.Exception("SMOKE FAIL: engine lane->head clamp broken");
+
                 // 渲染回归防线：自绘元素必须拿到非零内容高度，否则在窗口里什么都不画
                 //（布局数学测不出像素，这里直接断言 style.height 已按行数撑开）
                 var contentHeight = graph.style.height.value.value;
