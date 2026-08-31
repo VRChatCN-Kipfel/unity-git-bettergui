@@ -25,8 +25,7 @@ namespace KF.GitUI
         private readonly VisualElement messageColumn;
         private readonly List<Label> messageLabels = new List<Label>();
         private readonly List<VisualElement> rowElements = new List<VisualElement>();
-        private HashSet<int> hiddenRows = new HashSet<int>();
-        private List<(int Top, int Bottom)> collapseRuns = new List<(int, int)>();
+        private HashSet<int> runRows = new HashSet<int>(); // 折叠运行段行号（段内链条画点线样式）
 
         /// <summary>行选中回调（参数 = 行号）。</summary>
         public event System.Action<int> RowSelected;
@@ -61,8 +60,12 @@ namespace KF.GitUI
             log = commits;
             printer = rowPrinter;
             selectedRow = -1;
-            hiddenRows = segments != null ? segments.HiddenRows() : new HashSet<int>();
-            collapseRuns = segments != null ? segments.Runs : new List<(int, int)>();
+            runRows = new HashSet<int>();
+            if (segments != null)
+            {
+                foreach (var (top, bottom) in segments.Runs)
+                    for (var r = top; r <= bottom; r++) runRows.Add(r);
+            }
 
             // 图谱列宽度 = 全表最大元素数 * lane 宽 + 余量（保持一致对齐）
             var maxElements = 1;
@@ -180,6 +183,24 @@ namespace KF.GitUI
             painter.Stroke();
         }
 
+        /// <summary>点线（DOTTED）描边：沿线段 4px 点 / 3px 间隔，视觉连续柔和。</summary>
+        private static void StrokeDotted(Painter2D painter, Vector2 a, Vector2 b)
+        {
+            var dir = b - a;
+            var len = dir.magnitude;
+            if (len < 1f) return;
+            var unit = dir / len;
+            for (var d = 2f; d < len - 2f; d += 7f)
+            {
+                var s = a + unit * d;
+                var e = a + unit * Mathf.Min(d + 4f, len - 2f);
+                painter.BeginPath();
+                painter.MoveTo(s);
+                painter.LineTo(e);
+                painter.Stroke();
+            }
+        }
+
         private void PaintGraph(MeshGenerationContext mgc)
         {
             var painter = mgc.painter2D;
@@ -199,12 +220,14 @@ namespace KF.GitUI
                 painter.Fill();
             }
 
-            // 1) 边（先画，节点压上）
+            // 1) 边（先画，节点压上）。折叠段（runRows）内的链条边改画"点线"——连续不断、语义清晰
             for (var r = 0; r < printer.Rows; r++)
             {
                 foreach (var e in printer.GetEdgesInRow(r))
                 {
-                    var x1 = LaneWidth * e.FromPosition + LaneWidth / 2f;
+                    // 节点发出的边：起点 x = 节点泳道；在途边：起点 x = 行内位置槽位
+                    var fromNode = e.IsDown ? e.UpNode : e.DownNode;
+                    var x1 = LaneWidth * (fromNode == r ? printer.LayoutIndex(r) : e.FromPosition) + LaneWidth / 2f;
                     var y1 = r * RowHeight + RowHeight / 2f;
                     if (e.Kind == RowPrinter.RenderKind.ArrowDown || e.Kind == RowPrinter.RenderKind.ArrowUp)
                     {
@@ -216,9 +239,19 @@ namespace KF.GitUI
                     var selected = (r == selectedRow || (e.IsDown ? e.DownNode == selectedRow : e.UpNode == selectedRow));
                     painter.lineWidth = selected ? 1.0f : 0.4f;
                     painter.strokeColor = LaneColor(printer.LayoutIndex(e.UpNode >= 0 ? e.UpNode : r));
-                    var x2 = LaneWidth * e.ToPosition + LaneWidth / 2f;
+                    // 落点：命中端节点 -> 按该节点泳道 x（跨泳道即出现拐角）；否则按行内位置槽位
+                    var x2 = LaneWidth * (e.NodeTargetRow >= 0 ? printer.LayoutIndex(e.NodeTargetRow) : e.ToPosition) + LaneWidth / 2f;
                     var y2 = (e.IsDown ? (r + 1) : (r - 1)) * RowHeight + RowHeight / 2f;
                     if (y2 < -RowHeight || y2 > printer.Rows * RowHeight + RowHeight) continue;
+
+                    // 折叠段内：仅"本段链条边"（两端都在运行段内、同泳道垂直线）改点线——跨段的线保持实线
+                    if (e.FromPosition == e.ToPosition &&
+                        runRows.Contains(r) &&
+                        runRows.Contains(e.IsDown ? e.DownNode : e.UpNode))
+                    {
+                        StrokeDotted(painter, new Vector2(x1, y1), new Vector2(x2, y2));
+                        continue;
+                    }
                     painter.BeginPath();
                     painter.MoveTo(new Vector2(x1, y1));
                     painter.LineTo(new Vector2(x2, y2));
@@ -226,30 +259,12 @@ namespace KF.GitUI
                 }
             }
 
-            // 1.5) 折叠线性段：虚线链（JetBrains DOTTED 语义）
-            foreach (var (top, bottom) in collapseRuns)
-            {
-                var x = LaneWidth * printer.GetNodePosition(top) + LaneWidth / 2f;
-                var yStart = top * RowHeight + RowHeight / 2f;
-                var yEnd = (bottom + 1) * RowHeight;
-                painter.lineWidth = 0.8f;
-                painter.strokeColor = LaneColor(printer.LayoutIndex(top));
-                for (var y = yStart + 2f; y < yEnd - 2f; y += 7f)
-                {
-                    painter.BeginPath();
-                    painter.MoveTo(new Vector2(x, y));
-                    painter.LineTo(new Vector2(x, Mathf.Min(y + 4f, yEnd - 2f)));
-                    painter.Stroke();
-                }
-            }
-
-            // 2) 节点（折叠段中部行不画节点）
+            // 2) 节点（全部保留，折叠段仅线条样式变化）
             for (var r = 0; r < printer.Rows; r++)
             {
-                if (hiddenRows.Contains(r)) continue;
                 foreach (var n in printer.GetNodesInRow(r))
                 {
-                    var x0 = LaneWidth * n.Position + LaneWidth / 2f;
+                    var x0 = LaneWidth * printer.LayoutIndex(r) + LaneWidth / 2f; // 节点画在泳道 x（非行内位置）
                     var y0 = r * RowHeight + RowHeight / 2f;
                     var color = LaneColor(printer.LayoutIndex(r));
                     if (r == selectedRow)

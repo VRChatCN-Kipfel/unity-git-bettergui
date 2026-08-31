@@ -11,7 +11,17 @@ namespace KF.GitUI
     public sealed class RowPrinter
     {
         public struct NodePrint { public int Position; public bool IsHead; }
-        public struct EdgePrint { public int FromPosition; public int ToPosition; public bool IsDown; public int UpNode; public int DownNode; public RenderKind Kind; }
+        public struct EdgePrint
+        {
+            public int FromPosition;
+            public int ToPosition;
+            public bool IsDown;
+            public int UpNode;
+            public int DownNode;
+            public RenderKind Kind;
+            /// <summary>落点命中端节点时其行号（用于按泳道着色/拐角绘制）；-1 = 落点在在途边。</summary>
+            public int NodeTargetRow;
+        }
 
         /// <summary>边渲染种类（JetBrains long-edge 语义）。</summary>
         public enum RenderKind
@@ -135,18 +145,29 @@ namespace KF.GitUI
             var ev = isDown ? new RowItem { Up = sourceRow, Down = neighborNode }
                             : new RowItem { Up = neighborNode, Down = sourceRow };
             var to = FindEdgePosition(targetRow, ev);
-            if (to == -1) to = NodePositionInRow(targetRow, neighborNode);
+            var nodeTarget = -1;
+            if (to == -1)
+            {
+                to = NodePositionInRow(targetRow, neighborNode);
+                if (to != -1) nodeTarget = neighborNode; // 命中端节点：按该节点泳道定位
+            }
             if (to != -1)
-                into.Add(new EdgePrint { FromPosition = fromPosition, ToPosition = to, IsDown = isDown, UpNode = ev.Up, DownNode = ev.Down });
+                into.Add(new EdgePrint { FromPosition = fromPosition, ToPosition = to, IsDown = isDown, UpNode = ev.Up, DownNode = ev.Down, Kind = RenderKind.Segment, NodeTargetRow = nodeTarget });
         }
 
         private void AddEdgeBetween(int sourceRow, int fromPosition, RowItem ev, int targetRow, bool isDown, List<EdgePrint> into)
         {
             if (targetRow < 0 || targetRow >= sortedElements.Length) return;
             var to = FindEdgePosition(targetRow, ev);
-            if (to == -1) to = isDown ? NodePositionInRow(targetRow, ev.Down) : NodePositionInRow(targetRow, ev.Up);
+            var nodeTarget = -1;
+            if (to == -1)
+            {
+                var nodeIdx = isDown ? ev.Down : ev.Up;
+                to = NodePositionInRow(targetRow, nodeIdx);
+                if (to != -1) nodeTarget = nodeIdx; // 命中端节点
+            }
             if (to != -1)
-                into.Add(new EdgePrint { FromPosition = fromPosition, ToPosition = to, IsDown = isDown, UpNode = ev.Up, DownNode = ev.Down, Kind = RenderKind.Segment });
+                into.Add(new EdgePrint { FromPosition = fromPosition, ToPosition = to, IsDown = isDown, UpNode = ev.Up, DownNode = ev.Down, Kind = RenderKind.Segment, NodeTargetRow = nodeTarget });
         }
 
         private int FindEdgePosition(int row, RowItem ev)

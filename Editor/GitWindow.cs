@@ -138,14 +138,17 @@ namespace KF.GitUI
                 if (RowPrinter.DecideLongEdge(29, 20, 0, 29) != RowPrinter.RenderKind.Segment)
                     throw new System.Exception("SMOKE FAIL: DecideLongEdge Segment");
 
-                // 8) 线性段折叠：minRun=3 时 行5..7（ca9b7f8/3964f75/f908745 无 refs 简单链）成段，中部行 6..7 隐藏
+                // 8) 线性段折叠（分叉感知判据）：r6 是两个子提交的分叉点 -> 不可折叠；
+                //    r5、r7 各为孤立单链段（minRun=1 -> [(5,5),(7,7)]；默认 minRun=5 -> 无段）
                 var refedSet = new HashSet<string>();
                 foreach (var rf in refs) refedSet.Add(rf.CommitId);
-                var segs = LinearSegments.Build(log, pGraph, headSet, refedSet, minRun: 3);
-                if (segs.Runs.Count != 1 || segs.Runs[0].Top != 5 || segs.Runs[0].Bottom != 7)
-                    throw new System.Exception($"SMOKE FAIL: collapse runs={segs.Runs.Count} [{string.Join(";", segs.Runs)}] expect [(5,7)]");
-                if (!segs.HiddenRows().SetEquals(new int[] { 6, 7 }))
-                    throw new System.Exception("SMOKE FAIL: collapse hidden rows != {6,7}");
+                var segs1 = LinearSegments.Build(log, pGraph, headSet, refedSet, minRun: 1);
+                if (segs1.Runs.Count != 2 || segs1.Runs[0].Top != 5 || segs1.Runs[0].Bottom != 5 ||
+                    segs1.Runs[1].Top != 7 || segs1.Runs[1].Bottom != 7)
+                    throw new System.Exception($"SMOKE FAIL: collapse runs={segs1.Runs.Count} [{string.Join(";", segs1.Runs)}] expect [(5,5);(7,7)]");
+                var segs5 = LinearSegments.Build(log, pGraph, headSet, refedSet, minRun: 5);
+                if (segs5.Runs.Count != 0)
+                    throw new System.Exception("SMOKE FAIL: minRun=5 should have no runs");
 
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];

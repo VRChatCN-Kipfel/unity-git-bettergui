@@ -22,7 +22,9 @@ namespace KF.GitUI
             for (var r = 0; r < n; r++)
             {
                 var isChain = graph.IsSimpleNode(r) && r + 1 < n;
+                // 排除：head、有 ref、分叉点（子节点数 !=1，如 merge/split 处）——只折叠"单链直下"段
                 linear[r] = isChain && !headNodes.Contains(r) &&
+                            graph.GetChildNodes(r).Count == 1 &&
                             !(refedCommits != null && refedCommits.Contains(log[r].CommitID));
             }
 
