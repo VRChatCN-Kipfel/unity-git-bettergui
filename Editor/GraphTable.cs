@@ -25,7 +25,6 @@ namespace KF.GitUI
         private readonly VisualElement messageColumn;
         private readonly List<Label> messageLabels = new List<Label>();
         private readonly List<VisualElement> rowElements = new List<VisualElement>();
-        private HashSet<int> runRows = new HashSet<int>(); // 折叠运行段行号（段内链条画点线样式）
 
         /// <summary>行选中回调（参数 = 行号）。</summary>
         public event System.Action<int> RowSelected;
@@ -54,18 +53,11 @@ namespace KF.GitUI
         }
 
         public void SetData(List<GitLogEntry> commits, RowPrinter rowPrinter,
-            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit = null,
-            LinearSegments segments = null)
+            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit = null)
         {
             log = commits;
             printer = rowPrinter;
             selectedRow = -1;
-            runRows = new HashSet<int>();
-            if (segments != null)
-            {
-                foreach (var (top, bottom) in segments.Runs)
-                    for (var r = top; r <= bottom; r++) runRows.Add(r);
-            }
 
             // 图谱列宽度 = 全表最大元素数 * lane 宽 + 余量（保持一致对齐）
             var maxElements = 1;
@@ -183,24 +175,6 @@ namespace KF.GitUI
             painter.Stroke();
         }
 
-        /// <summary>点线（DOTTED）描边：沿线段 4px 点 / 3px 间隔，视觉连续柔和。</summary>
-        private static void StrokeDotted(Painter2D painter, Vector2 a, Vector2 b)
-        {
-            var dir = b - a;
-            var len = dir.magnitude;
-            if (len < 1f) return;
-            var unit = dir / len;
-            for (var d = 2f; d < len - 2f; d += 7f)
-            {
-                var s = a + unit * d;
-                var e = a + unit * Mathf.Min(d + 4f, len - 2f);
-                painter.BeginPath();
-                painter.MoveTo(s);
-                painter.LineTo(e);
-                painter.Stroke();
-            }
-        }
-
         private void PaintGraph(MeshGenerationContext mgc)
         {
             var painter = mgc.painter2D;
@@ -244,14 +218,6 @@ namespace KF.GitUI
                     var y2 = (e.IsDown ? (r + 1) : (r - 1)) * RowHeight + RowHeight / 2f;
                     if (y2 < -RowHeight || y2 > printer.Rows * RowHeight + RowHeight) continue;
 
-                    // 折叠段内：仅"本段链条边"（两端都在运行段内、同泳道垂直线）改点线——跨段的线保持实线
-                    if (e.FromPosition == e.ToPosition &&
-                        runRows.Contains(r) &&
-                        runRows.Contains(e.IsDown ? e.DownNode : e.UpNode))
-                    {
-                        StrokeDotted(painter, new Vector2(x1, y1), new Vector2(x2, y2));
-                        continue;
-                    }
                     painter.BeginPath();
                     painter.MoveTo(new Vector2(x1, y1));
                     painter.LineTo(new Vector2(x2, y2));

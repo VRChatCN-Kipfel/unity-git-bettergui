@@ -138,18 +138,6 @@ namespace KF.GitUI
                 if (RowPrinter.DecideLongEdge(29, 20, 0, 29) != RowPrinter.RenderKind.Segment)
                     throw new System.Exception("SMOKE FAIL: DecideLongEdge Segment");
 
-                // 8) 线性段折叠（分叉感知判据）：r6 是两个子提交的分叉点 -> 不可折叠；
-                //    r5、r7 各为孤立单链段（minRun=1 -> [(5,5),(7,7)]；默认 minRun=5 -> 无段）
-                var refedSet = new HashSet<string>();
-                foreach (var rf in refs) refedSet.Add(rf.CommitId);
-                var segs1 = LinearSegments.Build(log, pGraph, headSet, refedSet, minRun: 1);
-                if (segs1.Runs.Count != 2 || segs1.Runs[0].Top != 5 || segs1.Runs[0].Bottom != 5 ||
-                    segs1.Runs[1].Top != 7 || segs1.Runs[1].Bottom != 7)
-                    throw new System.Exception($"SMOKE FAIL: collapse runs={segs1.Runs.Count} [{string.Join(";", segs1.Runs)}] expect [(5,5);(7,7)]");
-                var segs5 = LinearSegments.Build(log, pGraph, headSet, refedSet, minRun: 5);
-                if (segs5.Runs.Count != 0)
-                    throw new System.Exception("SMOKE FAIL: minRun=5 should have no runs");
-
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -246,21 +234,8 @@ namespace KF.GitUI
                 Debug.LogWarning("[gitui] refs load failed: " + ex);
             }
 
-            graphTable.SetData(logEntries, printer, refsByCommit, BuildCollapseSegments(refsByCommit, pGraph, headSet));
+            graphTable.SetData(logEntries, printer, refsByCommit);
             graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · {refs?.Count ?? 0} refs · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
-        }
-
-        /// <summary>线性段折叠（展示级，默认关闭——需真行压缩的 CollapsedGraph 移植；点线观感争议中）。
-        /// 开启方法：置 true（LinearSegments 判据已含分叉点排除）。</summary>
-        private const bool CollapseEnabled = false;
-
-        private LinearSegments BuildCollapseSegments(
-            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit,
-            PermanentLinearGraph pGraph, HashSet<int> headSet)
-        {
-            if (!CollapseEnabled || refsByCommit == null) return null;
-            var refed = new HashSet<string>(refsByCommit.Keys);
-            return LinearSegments.Build(logEntries, pGraph, headSet, refed);
         }
 
         private void ShowCommitDetail(int row)
