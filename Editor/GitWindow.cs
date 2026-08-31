@@ -17,7 +17,9 @@ namespace KF.GitUI
     {
         private GitSession session;
         private List<GitLogEntry> logEntries = new List<GitLogEntry>();
+        private CommitGraphElement graph;
         private Label graphStatus;
+        private ScrollView commitList;
 
         [MenuItem("Window/Git/Git Better GUI (wip)")]
         public static void Open()
@@ -76,16 +78,17 @@ namespace KF.GitUI
 
         private void RenderCommits()
         {
-            var list = rootVisualElement.Q<ScrollView>("graph-list");
-            list.Clear();
+            graph.SetData(logEntries);
+            graphStatus.text = $"{logEntries.Count} commits · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
+
+            commitList.Clear();
             foreach (var e in logEntries)
             {
                 var line = new Label($"{e.ShortID}  {e.Summary}");
                 line.style.unityTextAlign = TextAnchor.MiddleLeft;
                 line.tooltip = "parents: " + string.Join(",", e.Parents) + "\nfiles: " + (e.Changes?.Count ?? 0);
-                list.Add(line);
+                commitList.Add(line);
             }
-            graphStatus.text = $"commits: {logEntries.Count} (head: {logEntries[0].ShortID})";
         }
 
         private VisualElement BuildLayout()
@@ -93,19 +96,21 @@ namespace KF.GitUI
             var outer = new TwoPaneSplitView(0, 320, TwoPaneSplitViewOrientation.Horizontal);
             outer.name = "outer-split";
 
-            // 左：图谱列表（本阶段先以文本行呈现提交，图谱自绘下一步）
+            // 左：提交图谱（自绘泳道 + 节点/连线）
             var graphPane = new VisualElement();
             graphStatus = new Label("loading…");
             graphPane.Add(graphStatus);
-            var graphList = new ScrollView(ScrollViewMode.Vertical);
-            graphList.name = "graph-list";
-            graphPane.Add(graphList);
+            var graphScroll = new ScrollView(ScrollViewMode.Vertical);
+            graph = new CommitGraphElement();
+            graphScroll.Add(graph);
+            graphPane.Add(graphScroll);
             outer.Add(graphPane);
 
-            // 右：上 文件树占位 / 下 详情占位
-            var inner = new TwoPaneSplitView(0, 200, TwoPaneSplitViewOrientation.Vertical);
+            // 右：上 提交列表（文件树下一步） / 下 详情占位
+            var inner = new TwoPaneSplitView(0, 240, TwoPaneSplitViewOrientation.Vertical);
             inner.name = "inner-split";
-            inner.Add(PlaceholderPane("Changes (WIP)", "file tree"));
+            commitList = new ScrollView(ScrollViewMode.Vertical);
+            inner.Add(commitList);
             inner.Add(PlaceholderPane("Commit details (WIP)", "full message"));
             outer.Add(inner);
 
