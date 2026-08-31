@@ -250,12 +250,15 @@ namespace KF.GitUI
             graphStatus.text = $"{logEntries.Count} commits · {layout.LaneCount} line(s) · {refs?.Count ?? 0} refs · head {logEntries[0].ShortID} \"{logEntries[0].Summary}\"";
         }
 
-        /// <summary>线性段折叠（JetBrains CollapsedGraph 展示级）：连续简单链 + 无 refs + 非 head 的区间。</summary>
+        /// <summary>线性段折叠（展示级，默认关闭——需真行压缩的 CollapsedGraph 移植；点线观感争议中）。
+        /// 开启方法：置 true（LinearSegments 判据已含分叉点排除）。</summary>
+        private const bool CollapseEnabled = false;
+
         private LinearSegments BuildCollapseSegments(
             Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit,
             PermanentLinearGraph pGraph, HashSet<int> headSet)
         {
-            if (refsByCommit == null) return null;
+            if (!CollapseEnabled || refsByCommit == null) return null;
             var refed = new HashSet<string>(refsByCommit.Keys);
             return LinearSegments.Build(logEntries, pGraph, headSet, refed);
         }
