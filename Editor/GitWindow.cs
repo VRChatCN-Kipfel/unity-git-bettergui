@@ -200,6 +200,24 @@ namespace KF.GitUI
                 if (secFile.data.OpsPath != "featY.txt" || secFile.data.Path != "Changes to parent 810e7c4/featY.txt")
                     throw new System.Exception("SMOKE FAIL: section OpsPath");
 
+                // 11) 右键动作过滤（JetBrains 动作动态过滤语义：Hidden 剔除、Disabled 保留、分隔线识别）
+                var menuActions = new List<IGitContextAction>
+                {
+                    new DelegateAction("copy", "Copy", () => { }),
+                    new DelegateAction("disabled", "Disabled", () => { }) { Enabled = false },
+                    new DelegateAction("hidden", "Hidden", () => { }) { Visible = false },
+                    new DelegateAction("checked", "Checked", () => { }) { Checked = true },
+                    GitContextSeparator.Instance,
+                };
+                var filtered = GitContextMenu.Filter(menuActions);
+                if (filtered.Count != 4)
+                    throw new System.Exception($"SMOKE FAIL: menu filter count={filtered.Count} expect 4");
+                // [copy, disabled, checked, separator]（hidden 被剔除）
+                if (filtered[1].Enabled || !filtered[2].Checked || filtered[0].Text != "Copy")
+                    throw new System.Exception("SMOKE FAIL: menu filter status mapping");
+                if (!(filtered[3] is GitContextSeparator))
+                    throw new System.Exception("SMOKE FAIL: menu separator");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
