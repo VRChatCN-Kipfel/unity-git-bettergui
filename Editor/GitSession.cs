@@ -120,11 +120,23 @@ namespace KF.GitUI
             catch { return ""; }
         }
 
+        /// <summary>
+        /// 会话内 git 任务通用准备：Configure 之后把进程工作目录钉到仓库根。
+        /// api 的 ProcessEnvironment.Configure 未设置 WorkingDirectory（源码注释掉），
+        /// 默认会落到编辑器工程目录/Unity cwd —— 仓库 ≠ 工程目录时必须钉住（如端到端冒烟仓库）。
+        /// </summary>
+        private void Prepare(IProcessTask task)
+        {
+            if (task?.Wrapper?.StartInfo != null)
+                task.Wrapper.StartInfo.WorkingDirectory = projectPath;
+        }
+
         /// <summary>加载提交历史（含 parents 全量 + 文件变更列表），返回前强制拓扑序。</summary>
         public List<GitLogEntry> LoadHistory(int numberOfCommits = 0)
         {
             var task = new GitLogTask(platform, new GitObjectFactory(environment), null, numberOfCommits, CancellationToken.None)
                 .Configure(platform.ProcessManager);
+            Prepare(task);
             var result = task.RunSynchronously();
             if (!task.Successful || result == null)
                 throw new InvalidOperationException("git log failed: " + task.Errors);
@@ -268,6 +280,7 @@ namespace KF.GitUI
             if (refsCache != null) return refsCache;
 
             var task = new GitForEachRefTask(platform).Configure(platform.ProcessManager);
+            Prepare(task);
             var output = task.RunSynchronously();
             var result = new List<GitRefInfo>();
             if (task.Successful && output != null)
@@ -316,9 +329,14 @@ namespace KF.GitUI
 
         // ---- 操作通道（左侧右键/Commit/分支弹窗共用；全部任务后台线程执行由调用方保证） ----
 
-        /// <summary>执行 git 操作任务；失败抛 InvalidOperationException（附 stderr）。</summary>
-        private static void RunOp(string name, ITask task)
+        /// <summary>
+        /// 执行 git 操作任务；失败抛 InvalidOperationException（附 stderr）。
+        /// 注意：必须用 IProcessTask&lt;T&gt;（接口 ITask&lt;T&gt; 重声明的 RunSynchronously 才会内联执行
+        /// 进程）；ITask/IProcessTask 接口上的 void RunSynchronously 是旧调度版本，会静默空转。
+        /// </summary>
+        private void RunOp<T>(string name, IProcessTask<T> task)
         {
+            Prepare(task);
             task.RunSynchronously();
             if (task.Successful) return;
             var err = task.Errors;
@@ -334,6 +352,7 @@ namespace KF.GitUI
         {
             var task = new GitStatusTask(platform, new GitObjectFactory(environment))
                 .Configure(platform.ProcessManager);
+            Prepare(task);
             var result = task.RunSynchronously();
             if (!task.Successful)
                 throw new InvalidOperationException("git status failed" +
@@ -421,6 +440,7 @@ namespace KF.GitUI
         {
             var task = new GitDiffNameStatusTask(platform, arguments)
                 .Configure(platform.ProcessManager);
+            Prepare(task);
             var output = task.RunSynchronously();
             if (!task.Successful || output == null) return new List<(char, string)>();
             return ParseNameStatusLines(output);
@@ -431,6 +451,7 @@ namespace KF.GitUI
         {
             var task = new GitDiffNameStatusTask(platform, arguments)
                 .Configure(platform.ProcessManager);
+            Prepare(task);
             var output = task.RunSynchronously();
             var result = new List<List<(char, string)>>();
             if (!task.Successful || output == null) return result;

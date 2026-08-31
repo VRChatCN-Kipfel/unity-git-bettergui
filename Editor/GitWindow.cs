@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Unity.Editor.Tasks;
 using Unity.VersionControl.Git;
 
 namespace KF.GitUI
@@ -286,6 +287,41 @@ namespace KF.GitUI
                     if (roTexts.Contains("Stage") || roTexts.Contains("Unstage") || !roTexts.Contains("Open"))
                         throw new System.Exception("SMOKE FAIL: read-only context leaks ops");
                 }
+
+                // 16) 端到端提交流程（一次性仓库：init → seed → 未跟踪文件 → Stage → Commit → 校验 → 清理）
+                var e2eDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-smoke-repo");
+                if (System.IO.Directory.Exists(e2eDir)) System.IO.Directory.Delete(e2eDir, true);
+                System.IO.Directory.CreateDirectory(e2eDir);
+                var gitExe = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe, "init -b master", e2eDir, out var cliErr, out var _);
+                RunCli(gitExe, "config user.name smoke", e2eDir, out cliErr, out var _);
+                RunCli(gitExe, "config user.email smoke@local", e2eDir, out cliErr, out var _);
+                RunCli(gitExe, "config commit.gpgsign false", e2eDir, out cliErr, out var _);
+                RunCli(gitExe, "commit --allow-empty -m seed", e2eDir, out cliErr, out var _);
+                if (!string.IsNullOrEmpty(cliErr))
+                    throw new System.Exception("SMOKE FAIL: e2e seed: " + cliErr);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(e2eDir, "payload.txt"), "hello e2e");
+                using (var s2 = GitSession.Open(e2eDir))
+                {
+                    var st0 = s2.LoadStatus();
+                    if (st0.LocalBranch != "master" || st0.Entries.Count != 1)
+                        throw new System.Exception("SMOKE FAIL: e2e status0");
+                    var st0e = st0.Entries[0];
+                    if (!st0e.Untracked || st0e.path != "payload.txt")
+                        throw new System.Exception("SMOKE FAIL: e2e untracked entry");
+                    s2.Stage(new[] { "payload.txt" });
+                    var st1 = s2.LoadStatus();
+                    if (st1.Entries.Count != 1 || !st1.Entries[0].Staged)
+                        throw new System.Exception("SMOKE FAIL: e2e staged entry");
+                    s2.Commit("e2e smoke", "body line", false, false, false);
+                    var st2 = s2.LoadStatus();
+                    if (st2.Entries.Count != 0)
+                        throw new System.Exception("SMOKE FAIL: e2e clean after commit");
+                    var log2 = s2.LoadHistory(10);
+                    if (log2.Count != 2 || log2[0].Summary != "e2e smoke")
+                        throw new System.Exception("SMOKE FAIL: e2e history");
+                }
+                DeleteDir(e2eDir);
 
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
@@ -684,6 +720,35 @@ namespace KF.GitUI
         {
             Debug.LogWarning("[gitui] op failed: " + ex);
             EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuOpFailedTitle), ex.Message, I18n.L(I18n.Keys.DialogOk));
+        }
+
+        /// <summary>冒烟辅助：前台运行 git 命令；error=stderr（失败含退出码），output=stdout。</summary>
+        private static void RunCli(string exe, string args, string cwd, out string error, out string output)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(exe, args)
+            {
+                WorkingDirectory = cwd,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            var outp = p.StandardOutput.ReadToEnd();
+            var err = p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            error = err.Trim();
+            if (p.ExitCode != 0)
+                error = (error.Length > 0 ? error : outp.Trim()) + $" (exit {p.ExitCode})";
+            output = outp;
+        }
+
+        /// <summary>冒烟辅助：递归删除（git 松散对象文件带只读属性，Directory.Delete 会拒绝）。</summary>
+        private static void DeleteDir(string dir)
+        {
+            foreach (var f in System.IO.Directory.GetFiles(dir, "*", System.IO.SearchOption.AllDirectories))
+                System.IO.File.SetAttributes(f, System.IO.FileAttributes.Normal);
+            System.IO.Directory.Delete(dir, true);
         }
 
         /// <summary>轻量模态输入窗（JetBrains 风格文本输入；EditorUtility 无 InputDialog）。</summary>
