@@ -25,6 +25,8 @@ namespace KF.GitUI
         private readonly VisualElement messageColumn;
         private readonly List<Label> messageLabels = new List<Label>();
         private readonly List<VisualElement> rowElements = new List<VisualElement>();
+        private HashSet<int> hiddenRows = new HashSet<int>();
+        private List<(int Top, int Bottom)> collapseRuns = new List<(int, int)>();
 
         /// <summary>行选中回调（参数 = 行号）。</summary>
         public event System.Action<int> RowSelected;
@@ -53,11 +55,14 @@ namespace KF.GitUI
         }
 
         public void SetData(List<GitLogEntry> commits, RowPrinter rowPrinter,
-            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit = null)
+            Dictionary<string, List<GitSession.GitRefInfo>> refsByCommit = null,
+            LinearSegments segments = null)
         {
             log = commits;
             printer = rowPrinter;
             selectedRow = -1;
+            hiddenRows = segments != null ? segments.HiddenRows() : new HashSet<int>();
+            collapseRuns = segments != null ? segments.Runs : new List<(int, int)>();
 
             // 图谱列宽度 = 全表最大元素数 * lane 宽 + 余量（保持一致对齐）
             var maxElements = 1;
@@ -152,6 +157,29 @@ namespace KF.GitUI
             return UnityEngine.Color.HSVToRGB(hue, 0.72f, 0.88f);
         }
 
+        /// <summary>长边端点箭头（两笔短线指向，指示边的走向）。</summary>
+        private static void PaintArrow(Painter2D painter, float x, float y, bool down)
+        {
+            painter.lineWidth = 1.0f;
+            if (down)
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(x - 3.5f, y));
+                painter.LineTo(new Vector2(x, y + 5f));
+                painter.MoveTo(new Vector2(x + 3.5f, y));
+                painter.LineTo(new Vector2(x, y + 5f));
+            }
+            else
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(x - 3.5f, y));
+                painter.LineTo(new Vector2(x, y - 5f));
+                painter.MoveTo(new Vector2(x + 3.5f, y));
+                painter.LineTo(new Vector2(x, y - 5f));
+            }
+            painter.Stroke();
+        }
+
         private void PaintGraph(MeshGenerationContext mgc)
         {
             var painter = mgc.painter2D;
@@ -176,11 +204,18 @@ namespace KF.GitUI
             {
                 foreach (var e in printer.GetEdgesInRow(r))
                 {
+                    var x1 = LaneWidth * e.FromPosition + LaneWidth / 2f;
+                    var y1 = r * RowHeight + RowHeight / 2f;
+                    if (e.Kind == RowPrinter.RenderKind.ArrowDown || e.Kind == RowPrinter.RenderKind.ArrowUp)
+                    {
+                        // 长边端点箭头（JetBrains long-edge：中部不画，两端箭头指示方向）
+                        painter.strokeColor = LaneColor(printer.LayoutIndex(e.UpNode));
+                        PaintArrow(painter, x1, y1, e.Kind == RowPrinter.RenderKind.ArrowDown);
+                        continue;
+                    }
                     var selected = (r == selectedRow || (e.IsDown ? e.DownNode == selectedRow : e.UpNode == selectedRow));
                     painter.lineWidth = selected ? 1.0f : 0.4f;
                     painter.strokeColor = LaneColor(printer.LayoutIndex(e.UpNode >= 0 ? e.UpNode : r));
-                    var x1 = LaneWidth * e.FromPosition + LaneWidth / 2f;
-                    var y1 = r * RowHeight + RowHeight / 2f;
                     var x2 = LaneWidth * e.ToPosition + LaneWidth / 2f;
                     var y2 = (e.IsDown ? (r + 1) : (r - 1)) * RowHeight + RowHeight / 2f;
                     if (y2 < -RowHeight || y2 > printer.Rows * RowHeight + RowHeight) continue;
@@ -191,9 +226,27 @@ namespace KF.GitUI
                 }
             }
 
-            // 2) 节点
+            // 1.5) 折叠线性段：虚线链（JetBrains DOTTED 语义）
+            foreach (var (top, bottom) in collapseRuns)
+            {
+                var x = LaneWidth * printer.GetNodePosition(top) + LaneWidth / 2f;
+                var yStart = top * RowHeight + RowHeight / 2f;
+                var yEnd = (bottom + 1) * RowHeight;
+                painter.lineWidth = 0.8f;
+                painter.strokeColor = LaneColor(printer.LayoutIndex(top));
+                for (var y = yStart + 2f; y < yEnd - 2f; y += 7f)
+                {
+                    painter.BeginPath();
+                    painter.MoveTo(new Vector2(x, y));
+                    painter.LineTo(new Vector2(x, Mathf.Min(y + 4f, yEnd - 2f)));
+                    painter.Stroke();
+                }
+            }
+
+            // 2) 节点（折叠段中部行不画节点）
             for (var r = 0; r < printer.Rows; r++)
             {
+                if (hiddenRows.Contains(r)) continue;
                 foreach (var n in printer.GetNodesInRow(r))
                 {
                     var x0 = LaneWidth * n.Position + LaneWidth / 2f;

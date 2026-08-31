@@ -11,7 +11,28 @@ namespace KF.GitUI
     public sealed class RowPrinter
     {
         public struct NodePrint { public int Position; public bool IsHead; }
-        public struct EdgePrint { public int FromPosition; public int ToPosition; public bool IsDown; public int UpNode; public int DownNode; }
+        public struct EdgePrint { public int FromPosition; public int ToPosition; public bool IsDown; public int UpNode; public int DownNode; public RenderKind Kind; }
+
+        /// <summary>边渲染种类（JetBrains long-edge 语义）。</summary>
+        public enum RenderKind
+        {
+            Segment,   // 正常段（跨度 < LongEdgeSize）
+            ArrowDown, // 长边上端下一行的向下箭头（只画箭头）
+            ArrowUp,   // 长边下端上一行的向上箭头（只画箭头）
+            Hidden     // 长边中部：不画（泳道位保留）
+        }
+
+        // JetBrains PrintElementGeneratorImpl：LONG_EDGE_SIZE=30 / LONG_EDGE_PART_SIZE=1
+        public const int LongEdgeSize = 30;
+
+        /// <summary>长边渲染判定（纯函数，冒烟可断言）。</summary>
+        public static RenderKind DecideLongEdge(int span, int row, int up, int down)
+        {
+            if (span < LongEdgeSize) return RenderKind.Segment;
+            if (row == up + 1) return RenderKind.ArrowDown;
+            if (row == down - 1) return RenderKind.ArrowUp;
+            return RenderKind.Hidden;
+        }
 
         struct RowItem
         {
@@ -80,12 +101,24 @@ namespace KF.GitUI
                 foreach (var c in graph.GetChildNodes(r))
                     AddEdgeToNeighbor(r, nodePos, c, isDown: false, rowEdges);
 
-                // 在途边跨行延续
+                // 在途边跨行延续（长边只在近端行画箭头，中部 Hidden 但泳道位保留）
                 for (var i = 0; i < list.Count; i++)
                 {
                     if (list[i].IsNode) continue;
-                    if (r + 1 < n) AddEdgeBetween(r, i, list[i], r + 1, isDown: true, rowEdges);
-                    if (r - 1 >= 0) AddEdgeBetween(r, i, list[i], r - 1, isDown: false, rowEdges);
+                    var ev = list[i];
+                    var span = ev.Down - ev.Up;
+                    if (span >= LongEdgeSize)
+                    {
+                        var kind = DecideLongEdge(span, r, ev.Up, ev.Down);
+                        if (kind == RenderKind.ArrowDown || kind == RenderKind.ArrowUp)
+                            rowEdges.Add(new EdgePrint { FromPosition = i, ToPosition = -1, IsDown = kind == RenderKind.ArrowDown, UpNode = ev.Up, DownNode = ev.Down, Kind = kind });
+                        // Hidden：本行不产出绘制元素
+                    }
+                    else
+                    {
+                        if (r + 1 < n) AddEdgeBetween(r, i, ev, r + 1, isDown: true, rowEdges);
+                        if (r - 1 >= 0) AddEdgeBetween(r, i, ev, r - 1, isDown: false, rowEdges);
+                    }
                 }
 
                 nodes[r] = rowNodes;
@@ -113,7 +146,7 @@ namespace KF.GitUI
             var to = FindEdgePosition(targetRow, ev);
             if (to == -1) to = isDown ? NodePositionInRow(targetRow, ev.Down) : NodePositionInRow(targetRow, ev.Up);
             if (to != -1)
-                into.Add(new EdgePrint { FromPosition = fromPosition, ToPosition = to, IsDown = isDown, UpNode = ev.Up, DownNode = ev.Down });
+                into.Add(new EdgePrint { FromPosition = fromPosition, ToPosition = to, IsDown = isDown, UpNode = ev.Up, DownNode = ev.Down, Kind = RenderKind.Segment });
         }
 
         private int FindEdgePosition(int row, RowItem ev)
