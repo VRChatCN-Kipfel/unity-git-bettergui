@@ -70,6 +70,25 @@ namespace KF.GitUI
         public const string MenuDiscardCount = "menu.discardCount"; // {0}=文件数
         public const string MenuOpen = "menu.open";
         public const string MenuCopyPath = "menu.copyPath";
+        public const string MenuCompareBranch = "menu.compareWithBranch";
+        public const string MenuCreateTag = "menu.createTag";
+        public const string CreateTagPrompt = "tag.prompt";
+
+        // -- 分支弹窗 / Compare --
+        public const string BranchTitle = "branch.title";
+        public const string BranchFilter = "branch.filter";
+        public const string BranchCurrent = "branch.current";
+        public const string BranchNewLabel = "branch.newLabel";
+        public const string BranchNew = "branch.new";
+        public const string BranchTagLabel = "branch.tagLabel";
+        public const string BranchTag = "branch.tag";
+        public const string BranchDelete = "branch.delete";
+        public const string BranchDeleteConfirm = "branch.deleteConfirm"; // {0}=分支名
+        public const string BranchDeleteForce = "branch.deleteForce"; // {0}=分支名
+        public const string BranchCheckoutTagConfirm = "branch.checkoutTagConfirm"; // {0}=标签名
+        public const string CompareResultTitle = "compare.resultTitle"; // {0}=提交短号
+        public const string CompareNoChanges = "compare.noChanges";
+        public const string CompareBack = "compare.back";
         }
     }
 }

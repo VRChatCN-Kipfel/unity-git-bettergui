@@ -231,8 +231,19 @@ namespace KF.GitUI
                     throw new System.Exception("SMOKE FAIL: commit menu reset submenu");
                 if (!commitTexts.Contains("Revert Commit…") || !commitTexts.Contains("Checkout…"))
                     throw new System.Exception("SMOKE FAIL: commit menu revert/checkout");
+                if (!commitTexts.Contains("Compare with Branch…") || !commitTexts.Contains("Create Tag…"))
+                    throw new System.Exception("SMOKE FAIL: commit menu compare/tag");
                 if (GitWindow.BuildCommitContextActions(s, log, 999, () => { }).Any())
                     throw new System.Exception("SMOKE FAIL: commit menu out-of-range should be empty");
+                // 15) 分支弹窗：过滤（空格分词、全 token 命中、忽略大小写）
+                var fAll = BranchPopupWindow.ApplyFilter(refs, "");
+                if (fAll.Count != refs.Count)
+                    throw new System.Exception("SMOKE FAIL: branch filter empty != all");
+                var fFeat = BranchPopupWindow.ApplyFilter(refs, "feature");
+                if (fFeat.Count != 2)
+                    throw new System.Exception($"SMOKE FAIL: branch filter 'feature' count={fFeat.Count} expect 2");
+                if (BranchPopupWindow.ApplyFilter(refs, "NOPE99").Count != 0)
+                    throw new System.Exception("SMOKE FAIL: branch filter nomatch != 0");
 
                 // 13) Commit 数据通道：状态解析 + gpg 探测（stderr 子串）
                 var status = s.LoadStatus();
@@ -527,6 +538,25 @@ namespace KF.GitUI
             RunFlow(() => session?.Discard(paths), onMutated);
         }
 
+        private static void CompareWithBranch(GitSession session, GitLogEntry e)
+        {
+            if (session == null) return;
+            CompareWindow.Open(session, e.CommitID);
+        }
+
+        private static void PromptCreateTag(GitSession session, GitLogEntry e, Action onMutated)
+        {
+            var name = InputDialog.Show(I18n.L(I18n.Keys.MenuCreateTag),
+                I18n.L(I18n.Keys.CreateTagPrompt), e.ShortID);
+            if (string.IsNullOrWhiteSpace(name)) return;
+            try
+            {
+                session.CreateTag(name.Trim(), e.CommitID, name.Trim());
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
+        }
+
         private static void OpenFile(GitSession session, ChangeItem item)
         {
             var opsPath = item.OpsPath ?? item.Path;
@@ -534,9 +564,15 @@ namespace KF.GitUI
             EditorUtility.OpenWithDefaultApp(session.ProjectPath + "/" + opsPath);
         }
 
+        private void OnBranchesChanged()
+        {
+            // 分支弹窗新建/删除/打标签后：refs 缓存失效，指纹自动刷新会重载 refs+图谱（1.5s 内）
+            session?.InvalidateRefs();
+        }
+
         /// <summary>
         /// 提交语境右键动作（JetBrains Git.Log.ContextMenu 裁剪版）：
-        /// Copy Hash / Copy Summary | New Branch… | Reset…(软/混/硬) | Revert Commit… / Checkout…
+        /// Copy Hash / Copy Summary | New Branch… / Compare with Branch… / Create Tag… | Reset…(软/混/硬) | Revert Commit…/Checkout…
         /// 静态可测：session/log 输入，onMutated 在变更成功后回调（窗口负责刷新）。
         /// </summary>
         public static IEnumerable<IGitContextAction> BuildCommitContextActions(GitSession session,
@@ -552,6 +588,10 @@ namespace KF.GitUI
             yield return GitContextSeparator.Instance;
             yield return new DelegateAction("new.branch", I18n.L(I18n.Keys.MenuNewBranch),
                 () => PromptNewBranch(session, e, onMutated));
+            yield return new DelegateAction("compare.branch", I18n.L(I18n.Keys.MenuCompareBranch),
+                () => CompareWithBranch(session, e));
+            yield return new DelegateAction("tag.create", I18n.L(I18n.Keys.MenuCreateTag),
+                () => PromptCreateTag(session, e, onMutated));
             yield return GitContextSeparator.Instance;
             yield return new DelegateAction("reset.soft", ResetPath(I18n.Keys.MenuResetSoft),
                 () => ConfirmReset(session, e, GitResetMode.Soft, onMutated));
@@ -880,6 +920,10 @@ namespace KF.GitUI
             tabCommit.name = "tab-commit";
             toolbar.Add(tabLog);
             toolbar.Add(tabCommit);
+            var branchesBtn = new Button(() => BranchPopupWindow.Open(session, OnBranchesChanged))
+            { text = I18n.L(I18n.Keys.BranchTitle) };
+            branchesBtn.name = "btn-branches";
+            toolbar.Add(branchesBtn);
             root.Add(toolbar);
 
             // 页面容器：两个页面各自保留状态，仅切换 display

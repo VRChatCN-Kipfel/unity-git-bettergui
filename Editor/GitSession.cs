@@ -399,6 +399,24 @@ namespace KF.GitUI
             RunOp("git checkout", new GitSwitchBranchesTask(platform, gitRef).Configure(platform.ProcessManager));
         }
 
+        /// <summary>删除本地分支（-d；未合并失败由 UI 层确认改用 force）。</summary>
+        public void DeleteBranch(string name, bool force)
+        {
+            RunOp("git branch -d", new GitBranchDeleteTask(platform, name, force).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>创建附注标签（git tag -a name commit -m msg）。</summary>
+        public void CreateTag(string name, string commitHash, string message)
+        {
+            RunOp("git tag -a", new GitTagTask(platform, name, commitHash, message).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>使 refs 缓存失效（分支弹窗新建/删除/打标签后调用；历史/状态缓存不受影响）。</summary>
+        public void InvalidateRefs()
+        {
+            lock (cacheLock) refsCache = null;
+        }
+
         private List<(char, string)> RunNameStatus(string arguments)
         {
             var task = new GitDiffNameStatusTask(platform, arguments)

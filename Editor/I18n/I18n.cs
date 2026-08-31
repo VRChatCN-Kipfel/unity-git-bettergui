@@ -78,6 +78,24 @@ namespace KF.GitUI
                 [Keys.MenuDiscardCount] = "{0} files",
                 [Keys.MenuOpen] = "Open",
                 [Keys.MenuCopyPath] = "Copy Path",
+                [Keys.MenuCompareBranch] = "Compare with Branch…",
+                [Keys.MenuCreateTag] = "Create Tag…",
+                [Keys.CreateTagPrompt] = "Tag name:",
+                // -- 分支弹窗 / Compare --
+                [Keys.BranchTitle] = "Branches",
+                [Keys.BranchFilter] = "Filter",
+                [Keys.BranchCurrent] = "current",
+                [Keys.BranchNewLabel] = "New branch:",
+                [Keys.BranchNew] = "New",
+                [Keys.BranchTagLabel] = "New tag:",
+                [Keys.BranchTag] = "Tag",
+                [Keys.BranchDelete] = "Delete",
+                [Keys.BranchDeleteConfirm] = "Delete branch {0}?",
+                [Keys.BranchDeleteForce] = "Branch {0} is not fully merged. Force delete?",
+                [Keys.BranchCheckoutTagConfirm] = "Checkout tag {0}? This detaches HEAD.",
+                [Keys.CompareResultTitle] = "Differences with {0}",
+                [Keys.CompareNoChanges] = "(no differences)",
+                [Keys.CompareBack] = "Back",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>
