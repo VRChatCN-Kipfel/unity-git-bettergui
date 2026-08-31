@@ -96,11 +96,16 @@ namespace KF.GitUI
 
                 if (parentCount > 1)
                 {
-                    // 合并视图：相对全部父（git diff-tree -c 组合 diff 语义；无冲突时为空）
-                    result.Combined = RunNameStatus($"diff-tree --no-commit-id -c -r --name-status -M {commitId}");
+                    // 两视图互不依赖 —— 并行启动两条 git 进程（延迟 = max 而非串行求和）
+                    var combinedTask = System.Threading.Tasks.Task.Run(
+                        () => RunNameStatus($"diff-tree --no-commit-id -c -r --name-status -M {commitId}"));
+                    var sectionsTask = System.Threading.Tasks.Task.Run(
+                        () => RunNameStatusSections($"show -m --name-status -M {commitId}"));
 
-                    // 每父视图：一条 git show -m（--diff-merges=separate 语义），每段头 "commit …(from parent)" 按父顺序
-                    var sections = RunNameStatusSections($"show -m --name-status -M {commitId}");
+                    // 合并视图：相对全部父（git diff-tree -c 组合 diff 语义；无冲突时为空）
+                    result.Combined = combinedTask.Result;
+                    // 每父视图：git show -m（--diff-merges=separate 语义），每段头 "commit …(from parent)" 按父顺序
+                    var sections = sectionsTask.Result;
                     for (var i = 0; i < parentCount; i++)
                         result.PerParent.Add(i < sections.Count ? sections[i] : new List<(char, string)>());
                 }
