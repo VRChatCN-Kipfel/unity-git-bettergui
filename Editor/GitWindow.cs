@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -97,6 +98,22 @@ namespace KF.GitUI
                 if (printer.GetEdgesInRow(0).Count != 2)
                     throw new System.Exception($"SMOKE FAIL: row0 edges={printer.GetEdgesInRow(0).Count} expect 2");
 
+                // 5) merge/root 变更按需加载（JetBrains DIFF_TO_PARENTS：合并视图 + 每父分组）
+                var mergeChanges = s.LoadChangesFor(log[0]);
+                if (mergeChanges == null || mergeChanges.PerParent.Count != 2)
+                    throw new System.Exception("SMOKE FAIL: merge PerParent != 2 groups");
+                // 810e7c4 是干净合并（无冲突）-> 合并视图为空；相对第一父出现 featY.txt
+                if (mergeChanges.Combined.Count != 0)
+                    throw new System.Exception("SMOKE FAIL: clean merge combined should be empty");
+                var hasFeatY = false;
+                foreach (var (st, path) in mergeChanges.PerParent[0])
+                    if (path.Contains("featY")) hasFeatY = true;
+                if (!hasFeatY)
+                    throw new System.Exception("SMOKE FAIL: merge parent0 changes missing featY.txt");
+                var rootChanges = s.LoadChangesFor(log[8]);
+                if (rootChanges == null || rootChanges.Combined.Count == 0)
+                    throw new System.Exception("SMOKE FAIL: root Combined empty");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -148,9 +165,10 @@ namespace KF.GitUI
             if (row < 0 || row >= logEntries.Count) return;
             var e = logEntries[row];
             changesList.Clear();
-            if (e.Changes != null && e.Changes.Count > 0)
+            var changes = e.Changes;
+            if (changes != null && changes.Count > 0)
             {
-                foreach (var c in e.Changes)
+                foreach (var c in changes)
                 {
                     var l = new Label($"  {c.Status,-12} {c.path}");
                     l.style.fontSize = 12;
@@ -159,10 +177,90 @@ namespace KF.GitUI
             }
             else
             {
-                changesList.Add(new Label("  (no file changes parsed — merge 需走 git diff 另行加载)"));
+                // merge/root：git log --name-status 不出 diff，按需补载
+                // 异步（JetBrains FullCommitDetailsListPanel 后台加载语义）：先 "loading…"，
+                // 后台跑 git（进程不阻塞主线程，含缓存），完成后回主线程渲染（选中已变则丢弃）。
+                changesList.Add(MutedLabel("loading changes…"));
+                var ctx = System.Threading.SynchronizationContext.Current;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        var cc = session?.LoadChangesFor(e);
+                        ctx?.Post(_ =>
+                        {
+                            if (graphTable.SelectedRow != row) return; // 过期结果丢弃
+                            changesList.Clear();
+                            RenderChanges(cc, e);
+                        }, null);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning("[gitui] detail load failed: " + ex);
+                    }
+                });
             }
 
             detailText.text = $"{e.ShortID}  {e.Summary}\n\n{e.Description}";
+        }
+
+        /// <summary>渲染按需加载的变更（JetBrains 语义：合并视图在前 + 每父一组 "Changes to parent <hash>"）。</summary>
+        private void RenderChanges(GitSession.CommitChanges extra, GitLogEntry e)
+        {
+            var parents = e.Parents;
+            if (extra == null)
+            {
+                changesList.Add(new Label("  (no file changes parsed)"));
+                return;
+            }
+            if (parents == null || parents.Count == 0)
+            {
+                foreach (var (status, path) in extra.Combined)
+                {
+                    var l = new Label($"  {status}  {path}");
+                    l.style.fontSize = 12;
+                    changesList.Add(l);
+                }
+                changesList.Add(MutedLabel("  (root commit — full tree vs empty)"));
+                return;
+            }
+            if (parents.Count > 1)
+            {
+                // 合并视图在前
+                if (extra.Combined.Count == 0)
+                    changesList.Add(MutedLabel("  ✓ no merge conflicts"));
+                else
+                {
+                    foreach (var (status, path) in extra.Combined)
+                    {
+                        var l = new Label($"  {status}  {path}   (all parents)");
+                        l.style.fontSize = 12;
+                        changesList.Add(l);
+                    }
+                }
+                // 每父一组（JetBrains "Changes to parent <hash> <subject…>"）
+                for (var i = 0; i < extra.PerParent.Count && i < parents.Count; i++)
+                {
+                    var parentShort = parents[i].Length >= 7 ? parents[i].Substring(0, 7) : parents[i];
+                    changesList.Add(MutedLabel($"Changes to parent {parentShort}"));
+                    foreach (var (status, path) in extra.PerParent[i])
+                    {
+                        var l = new Label($"   {status}  {path}");
+                        l.style.fontSize = 12;
+                        changesList.Add(l);
+                    }
+                }
+                return;
+            }
+            changesList.Add(new Label("  (no file changes parsed)"));
+        }
+
+        private static Label MutedLabel(string text)
+        {
+            var l = new Label("  " + text);
+            l.style.fontSize = 11;
+            l.style.color = new Color(0.62f, 0.62f, 0.62f);
+            return l;
         }
 
         private VisualElement BuildLayout()
