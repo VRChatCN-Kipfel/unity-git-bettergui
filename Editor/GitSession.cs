@@ -141,6 +141,75 @@ namespace KF.GitUI
             }
         }
 
+        /// <summary>ref 类型（排序组）。</summary>
+        public enum RefType { Head, Local, Remote, Tag }
+
+        /// <summary>一条 ref 标签（显示名 + 目标提交）。</summary>
+        public sealed class GitRefInfo
+        {
+            public RefType Type;
+            public string DisplayName;
+            public string CommitId;
+            public bool IsCurrentHead;
+        }
+
+        private List<GitRefInfo> refsCache; // refs 可变：会话级缓存，后续由 RepositoryWatcher 失效
+
+        /// <summary>
+        /// 加载 ref → commit 映射（git for-each-ref，兼容 packed refs）。
+        /// 排序对齐 JetBrains GitRefManager.groupForTable：HEAD/当前分支 -> 本地 -> remote -> tags（组内名序）。
+        /// </summary>
+        public List<GitRefInfo> LoadRefs()
+        {
+            if (refsCache != null) return refsCache;
+
+            var task = new GitForEachRefTask(platform).Configure(platform.ProcessManager);
+            var output = task.RunSynchronously();
+            var result = new List<GitRefInfo>();
+            if (task.Successful && output != null)
+            {
+                foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var parts = line.Split('\t');
+                    if (parts.Length < 2) continue;
+                    var refName = parts[0];
+                    var commit = parts[1];
+                    var isHead = parts.Length > 2 && parts[2].Trim() == "*";
+
+                    GitRefInfo info;
+                    if (refName.StartsWith("refs/remotes/", StringComparison.Ordinal))
+                        info = new GitRefInfo { Type = RefType.Remote, DisplayName = refName.Substring("refs/remotes/".Length), CommitId = commit };
+                    else if (refName.StartsWith("refs/tags/", StringComparison.Ordinal))
+                        info = new GitRefInfo { Type = RefType.Tag, DisplayName = refName.Substring("refs/tags/".Length), CommitId = commit };
+                    else if (refName.StartsWith("refs/heads/", StringComparison.Ordinal))
+                        info = new GitRefInfo { Type = isHead ? RefType.Head : RefType.Local, DisplayName = refName.Substring("refs/heads/".Length), CommitId = commit, IsCurrentHead = isHead };
+                    else
+                        continue;
+                    result.Add(info);
+                }
+
+                result.Sort((a, b) =>
+                {
+                    var g = GroupOrder(a.Type).CompareTo(GroupOrder(b.Type));
+                    return g != 0 ? g : string.CompareOrdinal(a.DisplayName, b.DisplayName);
+                });
+            }
+
+            lock (cacheLock) refsCache = result;
+            return result;
+        }
+
+        private static int GroupOrder(RefType t)
+        {
+            switch (t)
+            {
+                case RefType.Head: return 0;
+                case RefType.Local: return 1;
+                case RefType.Remote: return 2;
+                default: return 3;
+            }
+        }
+
         private List<(char, string)> RunNameStatus(string arguments)
         {
             var task = new GitDiffNameStatusTask(platform, arguments)
