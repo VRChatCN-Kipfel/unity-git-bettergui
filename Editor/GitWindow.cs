@@ -316,6 +316,11 @@ namespace KF.GitUI
                     if (st1.Entries.Count != 1 || !st1.Entries[0].Staged)
                         throw new System.Exception("SMOKE FAIL: e2e staged entry");
                     s2.Commit("e2e smoke", "body line", false, false, false);
+                    // 分支过滤（JetBrains Log filter 语义）：只渲染该 ref 的祖先
+                    s2.NewBranch("f2", "master~1"); // f2 基于 seed
+                    var filteredLog = s2.LoadHistory(10, "f2");
+                    if (filteredLog.Count != 1 || filteredLog[0].Summary != "seed")
+                        throw new System.Exception("SMOKE FAIL: e2e branch filter");
                     // 非法分支名：git 校验失败 -> RunOp 抛 InvalidOperationException（绝不静默）
                     try
                     {
@@ -402,6 +407,23 @@ namespace KF.GitUI
                     throw new System.Exception("SMOKE FAIL: label plain");
                 if (BranchesPanel.FormatRefLabel("feature/x", false, true, 2, 0) != "» feature/x  ↑2 ↓0")
                     throw new System.Exception("SMOKE FAIL: label current+ahead");
+
+                // 21) 图谱分支筛选下拉（All/Current/refs 分组/面板开关；单选勾选）
+                var filterActAll = GitWindow.BuildBranchFilterActions(refs, null, () => "main", _ => { }, () => { }, true).ToList();
+                var filterAllTexts = filterActAll.Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!filterAllTexts.Contains("All branches") || !filterAllTexts.Contains("Current branch")
+                    || !filterAllTexts.Contains("main") || !filterAllTexts.Contains("feature/x")
+                    || !filterAllTexts.Contains("Show branches panel"))
+                    throw new System.Exception("SMOKE FAIL: branch filter menu");
+                if (!filterActAll.First(a => a.Text == "All branches").Checked)
+                    throw new System.Exception("SMOKE FAIL: all-branches checked by default");
+                var filterActFeat = GitWindow.BuildBranchFilterActions(refs, "feature/x", () => "main", _ => { }, () => { }, false).ToList();
+                if (!filterActFeat.First(a => a.Text == "feature/x").Checked
+                    || filterActFeat.First(a => a.Text == "All branches").Checked
+                    || filterActFeat.First(a => a.Text == "Current branch").Checked)
+                    throw new System.Exception("SMOKE FAIL: filter radio states");
+                if (filterActFeat.First(a => a.Text == "Show branches panel").Checked)
+                    throw new System.Exception("SMOKE FAIL: panel toggle checked state");
 
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
@@ -862,6 +884,17 @@ namespace KF.GitUI
                 session = GitSession.Open(Environment.CurrentDirectory);
                 lastFingerprint = session.GetFingerprint();
                 branchesPanel?.Bind(session, OnBranchesChanged);
+                // 恢复持久化的图谱分支筛选（ref 已不存在则回退全部）
+                var savedFilter = EditorPrefs.GetString(PrefGraphFilter, string.Empty);
+                var validFilter = false;
+                if (!string.IsNullOrEmpty(savedFilter))
+                {
+                    var refsNow = session.LoadRefs() ?? new List<GitSession.GitRefInfo>();
+                    foreach (var r in refsNow)
+                        if (GitSession.ToRevision(r) == savedFilter) { validFilter = true; break; }
+                }
+                graphFilterRevision = validFilter ? savedFilter : null;
+                UpdateFilterButton();
                 RefreshData();
                 RefreshWorkingStatus();
             }
@@ -880,7 +913,7 @@ namespace KF.GitUI
                 ? logEntries[graphTable.SelectedRow].CommitID : null;
 
             session.InvalidateCaches(); // refs 等可变数据失效（提交变更缓存保留：不可变）
-            logEntries = session.LoadHistory(200);
+            logEntries = session.LoadHistory(200, graphFilterRevision);
             BuildGraphPipeline();
             branchesPanel?.Refresh(); // refs 变化同步到左侧分支面板
 
@@ -1034,13 +1067,16 @@ namespace KF.GitUI
         private VisualElement branchesPane;
         private const string PrefBranchesPane = "kf.gitui.branches.paneVisible";
         private bool branchesPaneVisible = true;
+        private const string PrefGraphFilter = "kf.gitui.graph.filter";
+        private Button branchFilterBtn;
+        private string graphFilterRevision; // null = 全部分支；否则为 ref（本地名 / refs/remotes/… / refs/tags/…）
 
         private VisualElement BuildLayout()
         {
             var root = new VisualElement();
             root.style.flexGrow = 1f;
 
-            // 顶部工具条：Log | Commit Tab + Branches（侧栏开关，JetBrains VCS toolwindow tabs 语义）
+            // 顶部工具条：Log | Commit Tab + 分支筛选下拉（JetBrains Log branch filter 语义，单选/不选）
             var toolbar = new VisualElement();
             toolbar.name = "toolbar";
             toolbar.style.flexDirection = FlexDirection.Row;
@@ -1053,9 +1089,10 @@ namespace KF.GitUI
             tabCommit.name = "tab-commit";
             toolbar.Add(tabLog);
             toolbar.Add(tabCommit);
-            var branchesBtn = new Button(ToggleBranchesPane) { text = I18n.L(I18n.Keys.BranchTitle) };
-            branchesBtn.name = "btn-branches";
-            toolbar.Add(branchesBtn);
+            branchFilterBtn = new Button(ShowBranchFilterMenu) { text = I18n.L(I18n.Keys.BranchFilterAll) };
+            branchFilterBtn.name = "btn-branches";
+            branchFilterBtn.tooltip = I18n.L(I18n.Keys.BranchFilterAll);
+            toolbar.Add(branchFilterBtn);
             root.Add(toolbar);
 
             // 主体：左 = 常驻分支面板（用户拍板保留在主窗口左侧，不弹窗）；右 = Log|Commit 页面
@@ -1102,6 +1139,100 @@ namespace KF.GitUI
             EditorPrefs.SetBool(PrefBranchesPane, branchesPaneVisible);
             if (branchesPane != null)
                 branchesPane.style.display = branchesPaneVisible ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        // ---- 图谱分支筛选（JetBrains Log branch filter；顶部下拉单选/不选） ----
+
+        private void ShowBranchFilterMenu()
+        {
+            if (session == null || branchFilterBtn == null) return;
+            var refs = session.LoadRefs() ?? new List<GitSession.GitRefInfo>();
+            var actions = BuildBranchFilterActions(refs, graphFilterRevision,
+                () => CurrentBranchName(), SetGraphFilter, ToggleBranchesPane, branchesPaneVisible);
+            var gm = new GenericMenu();
+            foreach (var a in GitContextMenu.Filter(actions))
+            {
+                if (a is GitContextSeparator) { gm.AddSeparator(""); continue; }
+                var act = a;
+                gm.AddItem(new GUIContent(act.Text), act.Checked, () => act.Run());
+            }
+            var pos = branchFilterBtn.worldBound.position;
+            gm.DropDown(new Rect(pos.x, pos.y + branchFilterBtn.worldBound.height, 0f, 0f));
+        }
+
+        private string CurrentBranchName()
+        {
+            try
+            {
+                if (session == null) return null;
+                return session.LoadStatus().LocalBranch;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>顶部下拉动作集（静态可测）：All / Current / 各 ref（按 本地|远程|标签 分组）/ 面板开关；单选打勾。</summary>
+        public static IEnumerable<IGitContextAction> BuildBranchFilterActions(
+            List<GitSession.GitRefInfo> refs, string activeRevision,
+            Func<string> currentBranchName, Action<string> apply, Action togglePanel, bool panelVisible)
+        {
+            var isAll = activeRevision == null;
+            yield return new DelegateAction("filter.all", I18n.L(I18n.Keys.BranchFilterAll),
+                () => apply(null)) { Checked = isAll };
+
+            string cur = null;
+            try { cur = currentBranchName?.Invoke(); } catch { }
+            if (!string.IsNullOrEmpty(cur))
+                yield return new DelegateAction("filter.current", I18n.L(I18n.Keys.BranchFilterCurrent),
+                    () => apply(cur)) { Checked = activeRevision == cur };
+
+            yield return GitContextSeparator.Instance;
+
+            var prevGroup = -1;
+            foreach (var r in refs)
+            {
+                var group = r.Type == GitSession.RefType.Tag ? 2
+                    : r.Type == GitSession.RefType.Remote ? 1 : 0;
+                if (prevGroup != -1 && group != prevGroup)
+                    yield return GitContextSeparator.Instance;
+                prevGroup = group;
+
+                var rev = GitSession.ToRevision(r);
+                yield return new DelegateAction("filter.ref", r.DisplayName,
+                    () => apply(rev)) { Checked = activeRevision == rev };
+            }
+
+            yield return GitContextSeparator.Instance;
+            yield return new DelegateAction("panel.toggle", I18n.L(I18n.Keys.BranchShowPanel),
+                () => togglePanel()) { Checked = panelVisible };
+        }
+
+        private static string ToRevision(GitSession.GitRefInfo r)
+        {
+            return GitSession.ToRevision(r);
+        }
+
+        private void SetGraphFilter(string revision)
+        {
+            graphFilterRevision = revision;
+            EditorPrefs.SetString(PrefGraphFilter, revision ?? string.Empty);
+            UpdateFilterButton();
+            RefreshData();
+        }
+
+        private void UpdateFilterButton()
+        {
+            if (branchFilterBtn == null) return;
+            branchFilterBtn.text = graphFilterRevision == null
+                ? I18n.L(I18n.Keys.BranchFilterAll)
+                : DisplayRevisionName(graphFilterRevision);
+            branchFilterBtn.tooltip = I18n.L(I18n.Keys.BranchFilterAll);
+        }
+
+        private static string DisplayRevisionName(string rev)
+        {
+            if (rev.StartsWith("refs/remotes/", StringComparison.Ordinal)) return rev.Substring("refs/remotes/".Length);
+            if (rev.StartsWith("refs/tags/", StringComparison.Ordinal)) return rev.Substring("refs/tags/".Length);
+            return rev;
         }
 
         private void ActivateTab(int index)

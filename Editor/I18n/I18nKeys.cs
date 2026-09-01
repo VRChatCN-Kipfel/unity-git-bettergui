@@ -108,6 +108,9 @@ namespace KF.GitUI
         public const string BranchCtxPushCurrentTo = "branch.ctx.pushCurrentTo"; // {0}=远程
         public const string BranchCtxNewBranchTitle = "branch.ctx.newBranchTitle";
         public const string BranchCtxNoRemoteHint = "branch.ctx.noRemoteHint";
+        public const string BranchFilterAll = "branch.filterAll";
+        public const string BranchFilterCurrent = "branch.filterCurrent";
+        public const string BranchShowPanel = "branch.showPanel";
         public const string CompareResultTitle = "compare.resultTitle"; // {0}=提交短号
         public const string CompareNoChanges = "compare.noChanges";
         public const string CompareBack = "compare.back";

@@ -66,7 +66,7 @@ namespace KF.GitUI
         /// <summary>给元素挂右键菜单；provider 每次弹出时调用（可含"先选中目标再返回动作"逻辑）。</summary>
         public static void Attach(VisualElement element, Func<IEnumerable<IGitContextAction>> provider)
         {
-            element.AddManipulator(new ContextualMenuManipulator(evt => Populate(evt.menu, provider())));
+            element.AddManipulator(new ContextualMenuManipulator(evt => PopulateMenu(evt.menu, provider())));
         }
 
         /// <summary>过滤（供冒烟断言与菜单填充共用）：null 与 Visible=false 剔除，分隔线保留。</summary>
@@ -80,7 +80,8 @@ namespace KF.GitUI
             return result;
         }
 
-        private static void Populate(DropdownMenu menu, IEnumerable<IGitContextAction> actions)
+        /// <summary>把动作列表填进菜单（右键弹出与顶部下拉共用同一填充逻辑）。</summary>
+        public static void PopulateMenu(DropdownMenu menu, IEnumerable<IGitContextAction> actions)
         {
             foreach (var a in Filter(actions))
             {

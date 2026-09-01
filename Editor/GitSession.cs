@@ -134,13 +134,71 @@ namespace KF.GitUI
         /// <summary>加载提交历史（含 parents 全量 + 文件变更列表），返回前强制拓扑序。</summary>
         public List<GitLogEntry> LoadHistory(int numberOfCommits = 0)
         {
+            return LoadHistory(numberOfCommits, null);
+        }
+
+        /// <summary>
+        /// 加载提交历史（可选 revision 分支过滤，JetBrains Log 分支筛选器语义）：
+        /// revision 为 null = 全部分支；否则只保留该 ref（本地分支名 / refs/remotes/… / refs/tags/…）及其祖先。
+        /// 实现为全量窗口 + 内存祖先过滤（LogEntryOutputProcessor 为 internal，无法在 GitExt 复刻任务；
+        /// 窗口 ≤ 200 行时与 git log &lt;ref&gt; 语义等价）。
+        /// </summary>
+        public List<GitLogEntry> LoadHistory(int numberOfCommits, string revision)
+        {
             var task = new GitLogTask(platform, new GitObjectFactory(environment), null, numberOfCommits, CancellationToken.None)
                 .Configure(platform.ProcessManager);
             Prepare(task);
             var result = task.RunSynchronously();
             if (!task.Successful || result == null)
                 throw new InvalidOperationException("git log failed: " + task.Errors);
-            return EnsureTopologicalOrder(result);
+
+            if (revision == null) return EnsureTopologicalOrder(result);
+
+            // 内存祖先过滤：从 ref 的提交出发沿父收集窗口内可达集
+            var commitId = FindRevisionCommitId(revision);
+            if (commitId == null) return new List<GitLogEntry>();
+
+            var index = new Dictionary<string, int>();
+            for (var i = 0; i < result.Count; i++) index[result[i].CommitID] = i;
+            if (!index.ContainsKey(commitId)) return new List<GitLogEntry>();
+
+            var reachable = new HashSet<string> { commitId };
+            var queue = new Queue<string>();
+            queue.Enqueue(commitId);
+            while (queue.Count > 0)
+            {
+                var cur = queue.Dequeue();
+                if (!index.TryGetValue(cur, out var row)) continue;
+                foreach (var p in result[row].Parents)
+                    if (index.ContainsKey(p) && reachable.Add(p))
+                        queue.Enqueue(p);
+            }
+
+            var kept = new List<GitLogEntry>();
+            foreach (var e in result)
+                if (reachable.Contains(e.CommitID)) kept.Add(e);
+            return EnsureTopologicalOrder(kept);
+        }
+
+        /// <summary>GitRefInfo → 图谱筛选 refspec（本地=名；远程=refs/remotes/…；标签=refs/tags/…）。</summary>
+        public static string ToRevision(GitSession.GitRefInfo r)
+        {
+            switch (r.Type)
+            {
+                case RefType.Remote: return "refs/remotes/" + r.DisplayName;
+                case RefType.Tag: return "refs/tags/" + r.DisplayName;
+                default: return r.DisplayName;
+            }
+        }
+
+        private string FindRevisionCommitId(string revision)
+        {
+            List<GitRefInfo> refsNow;
+            try { refsNow = LoadRefs(); } catch { return null; }
+            if (refsNow == null) return null;
+            foreach (var r in refsNow)
+                if (ToRevision(r) == revision) return r.CommitId;
+            return null;
         }
 
         /// <summary>
