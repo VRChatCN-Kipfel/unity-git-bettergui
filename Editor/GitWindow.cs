@@ -355,6 +355,44 @@ namespace KF.GitUI
                 if (GraphTable.HitTestArrow(arrowHits, new Vector2(60f, 60f)) != -1)
                     throw new System.Exception("SMOKE FAIL: arrow miss");
 
+                // 19) 分支面板右键动作集（当前/其它本地/远程/标签 + 上游子菜单无重命名 + 无远程时 Push 禁用）
+                var curRef = refs.First(r => r.IsCurrentHead);
+                var curTexts = BranchesPanel.BuildContextActions(s, curRef, "main", () => { }, _ => { })
+                    .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!curTexts.Contains("Branch from main…") || !curTexts.Contains("Update")
+                    || !curTexts.Contains("Push") || !curTexts.Contains("Rename…"))
+                    throw new System.Exception("SMOKE FAIL: current-branch ctx");
+                if (curTexts.Contains("Delete"))
+                    throw new System.Exception("SMOKE FAIL: current-branch ctx leaks Delete");
+                var otherRef = refs.First(r => r.Type == GitSession.RefType.Local);
+                var otherTexts = BranchesPanel.BuildContextActions(s, otherRef, "main", () => { }, _ => { })
+                    .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!otherTexts.Contains("Checkout") || !otherTexts.Contains("Delete")
+                    || !otherTexts.Any(t => t.StartsWith("Merge ", StringComparison.Ordinal) && t.EndsWith(" into main"))
+                    || otherTexts.Contains("Branch from main…"))
+                    throw new System.Exception("SMOKE FAIL: other-branch ctx");
+                var pushAct = BranchesPanel.BuildContextActions(s, otherRef, "main", () => { }, _ => { })
+                    .FirstOrDefault(a => a.Id == "ctx.push");
+                if (pushAct == null || pushAct.Enabled)
+                    throw new System.Exception("SMOKE FAIL: push should be disabled without remote");
+                var fake = new GitSession.GitRefInfo { Type = GitSession.RefType.Local, DisplayName = "ft", CommitId = "x", Upstream = "origin/ft" };
+                var fakeTexts = BranchesPanel.BuildContextActions(s, fake, "main", () => { }, _ => { })
+                    .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!fakeTexts.Any(t => t.StartsWith("Operations on origin/ft/", StringComparison.Ordinal)))
+                    throw new System.Exception("SMOKE FAIL: upstream submenu missing");
+                if (fakeTexts.Any(t => t.StartsWith("Operations on", StringComparison.Ordinal) && t.Contains("Rename")))
+                    throw new System.Exception("SMOKE FAIL: upstream submenu leaks Rename");
+                var fakeRemote = new GitSession.GitRefInfo { Type = GitSession.RefType.Remote, DisplayName = "origin/r1", CommitId = "y" };
+                var remoteTexts = BranchesPanel.BuildContextActions(s, fakeRemote, "main", () => { }, _ => { })
+                    .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!remoteTexts.Contains("Checkout") || remoteTexts.Contains("Rename…") || remoteTexts.Contains("Delete"))
+                    throw new System.Exception("SMOKE FAIL: remote ctx");
+                var fakeTag = new GitSession.GitRefInfo { Type = GitSession.RefType.Tag, DisplayName = "v9", CommitId = "z" };
+                var tagTexts = BranchesPanel.BuildContextActions(s, fakeTag, "main", () => { }, _ => { })
+                    .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!tagTexts.Contains("Checkout") || !tagTexts.Contains("Delete") || tagTexts.Contains("Rename…"))
+                    throw new System.Exception("SMOKE FAIL: tag ctx");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
@@ -614,7 +652,7 @@ namespace KF.GitUI
 
         private static void PromptCreateTag(GitSession session, GitLogEntry e, Action onMutated)
         {
-            var name = InputDialog.Show(I18n.L(I18n.Keys.MenuCreateTag),
+            var name = PromptDialog.Show(I18n.L(I18n.Keys.MenuCreateTag),
                 I18n.L(I18n.Keys.CreateTagPrompt), e.ShortID);
             if (string.IsNullOrWhiteSpace(name)) return;
             try
@@ -682,7 +720,7 @@ namespace KF.GitUI
 
         private static void PromptNewBranch(GitSession session, GitLogEntry e, Action onMutated)
         {
-            var name = InputDialog.Show(I18n.L(I18n.Keys.MenuNewBranch),
+            var name = PromptDialog.Show(I18n.L(I18n.Keys.MenuNewBranch),
                 I18n.L(I18n.Keys.MenuNewBranchPrompt, e.ShortID), "");
             if (string.IsNullOrWhiteSpace(name)) return;
             try
@@ -803,46 +841,6 @@ namespace KF.GitUI
                 }
             }
             throw new UnauthorizedAccessException("DeleteDir retries exhausted: " + dir);
-        }
-
-        /// <summary>轻量模态输入窗（JetBrains 风格文本输入；EditorUtility 无 InputDialog）。</summary>
-        private sealed class InputDialog : EditorWindow
-        {
-            private string message;
-            private string value;
-            private bool confirmed;
-
-            public static string Show(string title, string message, string defaultValue)
-            {
-                var w = CreateInstance<InputDialog>();
-                w.titleContent = new GUIContent(title);
-                w.message = message;
-                w.value = defaultValue ?? string.Empty;
-                w.ShowModal();
-                return w.confirmed ? w.value : null;
-            }
-
-            private void OnGUI()
-            {
-                GUILayout.Space(6);
-                GUILayout.Label(message, EditorStyles.wordWrappedLabel);
-                value = GUILayout.TextField(value ?? string.Empty);
-                GUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button(I18n.L(I18n.Keys.DialogOk)))
-                {
-                    confirmed = true;
-                    Close();
-                }
-                if (GUILayout.Button(I18n.L(I18n.Keys.DialogCancel)))
-                    Close();
-                GUILayout.EndHorizontal();
-                if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return)
-                {
-                    confirmed = true;
-                    Close();
-                }
-            }
         }
 
         /// <summary>打开/重开会话并加载。自动刷新只调 RefreshData（保留会话与不可变缓存）。</summary>

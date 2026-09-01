@@ -34,6 +34,35 @@ namespace KF.GitUI
             w.Show();
         }
 
+        /// <summary>直接比较两个 ref（如 目标分支 vs 当前分支、本地 vs 上游）：免去选分支一步，直接展示 name-status。</summary>
+        public static void OpenPair(GitSession session, string title, string refA, string refB)
+        {
+            if (session == null) return;
+            var w = GetWindow<CompareWindow>(true, title);
+            w.session = session;
+            w.commitHash = null;
+            w.commitHashShort = title;
+            w.allRefs = new List<GitSession.GitRefInfo>();
+            w.runPair(refA + " " + refB);
+            w.Show();
+        }
+
+        private void runPair(string args)
+        {
+            error = string.Empty;
+            result.Clear();
+            try
+            {
+                var task = new GitDiffNameStatusTask(session.Platform, "diff --name-status " + args)
+                    .Configure(session.Platform.ProcessManager);
+                var output = task.RunSynchronously();
+                if (task.Successful && !string.IsNullOrEmpty(output))
+                    result.AddRange(output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+                showingResult = true;
+            }
+            catch (Exception ex) { error = ex.Message; showingResult = false; }
+        }
+
         private void OnGUI()
         {
             if (session == null) { Close(); return; }

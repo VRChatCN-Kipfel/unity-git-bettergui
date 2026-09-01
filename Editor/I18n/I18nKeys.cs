@@ -90,6 +90,24 @@ namespace KF.GitUI
         public const string BranchGroupRemote = "branch.groupRemote";
         public const string BranchGroupTags = "branch.groupTags";
         public const string BranchCheckoutTagConfirm = "branch.checkoutTagConfirm"; // {0}=标签名
+
+        // -- 分支面板右键动作 --
+        public const string BranchCtxCheckout = "branch.ctx.checkout";
+        public const string BranchCtxNewFrom = "branch.ctx.newFrom"; // {0}=基准分支/标签
+        public const string BranchCtxUpdate = "branch.ctx.update";
+        public const string BranchCtxPush = "branch.ctx.push";
+        public const string BranchCtxFetch = "branch.ctx.fetch";
+        public const string BranchCtxRename = "branch.ctx.rename";
+        public const string BranchCtxRenamePrompt = "branch.ctx.renamePrompt"; // {0}=分支名
+        public const string BranchCtxCompareWith = "branch.ctx.compareWith"; // {0}=对照 ref
+        public const string BranchCtxMergeInto = "branch.ctx.mergeInto"; // {0}=来源 {1}=目标
+        public const string BranchCtxMergeConfirm = "branch.ctx.mergeConfirm"; // {0}=来源 {1}=目标
+        public const string BranchCtxUpstreamOps = "branch.ctx.upstreamOps"; // {0}=上游 ref
+        public const string BranchCtxUpstreamCompare = "branch.ctx.upstreamCompare";
+        public const string BranchCtxUpstreamMerge = "branch.ctx.upstreamMerge"; // {0}=当前分支
+        public const string BranchCtxPushCurrentTo = "branch.ctx.pushCurrentTo"; // {0}=远程
+        public const string BranchCtxNewBranchTitle = "branch.ctx.newBranchTitle";
+        public const string BranchCtxNoRemoteHint = "branch.ctx.noRemoteHint";
         public const string CompareResultTitle = "compare.resultTitle"; // {0}=提交短号
         public const string CompareNoChanges = "compare.noChanges";
         public const string CompareBack = "compare.back";
