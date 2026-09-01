@@ -34,6 +34,26 @@ namespace KF.GitUI
 
         private static readonly IGitContextAction[] NoActions = new IGitContextAction[0];
 
+        /// <summary>长边箭头命中（可点击，JetBrains 语义：点击 = 跳转到边的对端提交）。</summary>
+        public struct ArrowHit
+        {
+            public Rect Area;
+            public int TargetRow;
+        }
+
+        private readonly List<ArrowHit> arrowHits = new List<ArrowHit>();
+
+        /// <summary>箭头被点击（参数 = 对端提交行号）。</summary>
+        public event System.Action<int> ArrowClicked;
+
+        /// <summary>箭头命中判定（纯函数，冒烟可断言）：命中返回目标行；未命中 -1。</summary>
+        public static int HitTestArrow(IReadOnlyList<ArrowHit> hits, Vector2 pos)
+        {
+            for (var i = hits.Count - 1; i >= 0; i--)
+                if (hits[i].Area.Contains(pos)) return hits[i].TargetRow;
+            return -1;
+        }
+
         public int SelectedRow => selectedRow;
 
         public GraphTable()
@@ -53,10 +73,18 @@ namespace KF.GitUI
             Add(messageColumn);
         }
 
-        /// <summary>点击图谱列：按行高换算成行号 -> 选中该行（节点同样选中，JetBrains 行级交互）。</summary>
+        /// <summary>点击图谱列：先命中长边箭头（跳转对端提交），否则按行高选中该行。</summary>
         private void OnGraphClicked(ClickEvent ev)
         {
-            var row = (int)(ev.localPosition.y / RowHeight);
+            var pos = ev.localPosition;
+            var arrowTarget = HitTestArrow(arrowHits, pos);
+            if (arrowTarget >= 0)
+            {
+                Select(arrowTarget);
+                ArrowClicked?.Invoke(arrowTarget);
+                return;
+            }
+            var row = (int)(pos.y / RowHeight);
             if (row >= 0 && row < (log?.Count ?? 0)) Select(row);
         }
 
@@ -67,28 +95,18 @@ namespace KF.GitUI
             printer = rowPrinter;
             selectedRow = -1;
 
-            // 图谱列宽度 = 全表最大元素数 * lane 宽 + 余量（绘制/选中条用；文本缩进按每行实际泳道）
-            var maxElements = 1;
+            // 图谱列宽度/缩进 = "行内槽位"口径（JetBrains per-cell graphWidth：每行按需压缩，
+            // 不存在的泳道不占宽；全局 lane 只用于排序/着色——即用户要求的"实时计算需要占据的泳道"）
+            var maxWidth = 1;
             for (var r = 0; r < printer.Rows; r++)
-                if (printer.RowElementCount(r) > maxElements) maxElements = printer.RowElementCount(r);
-            graphWidthPx = (int)(LaneWidth * (maxElements + 1)) + 8;
+                if (printer.RowWidth(r) > maxWidth) maxWidth = printer.RowWidth(r);
+            graphWidthPx = (int)(LaneWidth * maxWidth) + 8;
 
-            // 每行文本缩进 = 该行实际绘制的最右 x（节点泳道 lane、边的 lane/槽位），标题实时靠拢（JetBrains per-cell graphWidth）
             var rowOffsets = new float[log.Count];
             for (var r = 0; r < printer.Rows; r++)
-            {
-                var maxX = printer.LayoutIndex(r); // 节点画在泳道 x
-                foreach (var e in printer.GetEdgesInRow(r))
-                {
-                    var fromNode = e.IsDown ? e.UpNode : e.DownNode;
-                    var fromX = fromNode == r ? printer.LayoutIndex(r) : e.FromPosition;
-                    var toX = e.NodeTargetRow >= 0 ? printer.LayoutIndex(e.NodeTargetRow) : e.ToPosition;
-                    if (fromX > maxX) maxX = fromX;
-                    if (toX > maxX) maxX = toX;
-                }
-                rowOffsets[r] = (maxX + 1) * LaneWidth;
-            }
+                rowOffsets[r] = printer.RowWidth(r) * LaneWidth + 2;
 
+            arrowHits.Clear();
             Clear();
             Add(graphColumn);
             Add(messageColumn);
@@ -225,27 +243,29 @@ namespace KF.GitUI
                 painter.Fill();
             }
 
-            // 1) 边（先画，节点压上）。折叠段（runRows）内的链条边改画"点线"——连续不断、语义清晰
+            // 1) 边（先画，节点压上）。统一"行内槽位"列口径：节点行起点=节点带内槽位、在途边=行内槽位
             for (var r = 0; r < printer.Rows; r++)
             {
                 foreach (var e in printer.GetEdgesInRow(r))
                 {
-                    // 节点发出的边：起点 x = 节点泳道；在途边：起点 x = 行内位置槽位
                     var fromNode = e.IsDown ? e.UpNode : e.DownNode;
-                    var x1 = LaneWidth * (fromNode == r ? printer.LayoutIndex(r) : e.FromPosition) + LaneWidth / 2f;
+                    var x1 = LaneWidth * (fromNode == r ? printer.GetNodePosition(r) : e.FromPosition) + LaneWidth / 2f;
                     var y1 = r * RowHeight + RowHeight / 2f;
                     if (e.Kind == RowPrinter.RenderKind.ArrowDown || e.Kind == RowPrinter.RenderKind.ArrowUp)
                     {
-                        // 长边端点箭头（JetBrains long-edge：中部不画，两端箭头指示方向）
+                        // 长边端点箭头（JetBrains long-edge：中部不画，两端箭头指示方向；同色=所属泳道色）
                         painter.strokeColor = LaneColor(printer.LayoutIndex(e.UpNode));
                         PaintArrow(painter, x1, y1, e.Kind == RowPrinter.RenderKind.ArrowDown);
+                        // 箭点击中区（OnGraphClicked 命中即跳转到对端提交，JetBrains 语义）
+                        var tgt = e.Kind == RowPrinter.RenderKind.ArrowDown ? e.DownNode : e.UpNode;
+                        arrowHits.Add(new ArrowHit { Area = new Rect(x1 - 7f, y1 - 7f, 14f, 14f), TargetRow = tgt });
                         continue;
                     }
                     var selected = (r == selectedRow || (e.IsDown ? e.DownNode == selectedRow : e.UpNode == selectedRow));
                     painter.lineWidth = selected ? 1.0f : 0.4f;
                     painter.strokeColor = LaneColor(printer.LayoutIndex(e.UpNode >= 0 ? e.UpNode : r));
-                    // 落点：命中端节点 -> 按该节点泳道 x（跨泳道即出现拐角）；否则按行内位置槽位
-                    var x2 = LaneWidth * (e.NodeTargetRow >= 0 ? printer.LayoutIndex(e.NodeTargetRow) : e.ToPosition) + LaneWidth / 2f;
+                    // 落点：命中端节点 -> 该节点在邻行的带内槽位（跨泳道即出现拐角）；否则按邻行槽位
+                    var x2 = LaneWidth * (e.NodeTargetRow >= 0 ? printer.GetNodePosition(e.NodeTargetRow) : e.ToPosition) + LaneWidth / 2f;
                     var y2 = (e.IsDown ? (r + 1) : (r - 1)) * RowHeight + RowHeight / 2f;
                     if (y2 < -RowHeight || y2 > printer.Rows * RowHeight + RowHeight) continue;
 
@@ -256,12 +276,12 @@ namespace KF.GitUI
                 }
             }
 
-            // 2) 节点（全部保留，折叠段仅线条样式变化）
+            // 2) 节点
             for (var r = 0; r < printer.Rows; r++)
             {
                 foreach (var n in printer.GetNodesInRow(r))
                 {
-                    var x0 = LaneWidth * printer.LayoutIndex(r) + LaneWidth / 2f; // 节点画在泳道 x（非行内位置）
+                    var x0 = LaneWidth * printer.GetNodePosition(r) + LaneWidth / 2f; // 节点画在行内槽位（压缩列口径）
                     var y0 = r * RowHeight + RowHeight / 2f;
                     var color = LaneColor(printer.LayoutIndex(r));
                     if (r == selectedRow)

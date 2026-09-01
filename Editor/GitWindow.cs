@@ -290,7 +290,7 @@ namespace KF.GitUI
 
                 // 16) 端到端提交流程（一次性仓库：init → seed → 未跟踪文件 → Stage → Commit → 校验 → 清理）
                 var e2eDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-smoke-repo");
-                if (System.IO.Directory.Exists(e2eDir)) System.IO.Directory.Delete(e2eDir, true);
+                DeleteDir(e2eDir); // 残留（上次失败留下）可能带只读属性
                 System.IO.Directory.CreateDirectory(e2eDir);
                 var gitExe = s.Platform.Environment.GitExecutablePath;
                 RunCli(gitExe, "init -b master", e2eDir, out var cliErr, out var _);
@@ -314,6 +314,13 @@ namespace KF.GitUI
                     if (st1.Entries.Count != 1 || !st1.Entries[0].Staged)
                         throw new System.Exception("SMOKE FAIL: e2e staged entry");
                     s2.Commit("e2e smoke", "body line", false, false, false);
+                    // 非法分支名：git 校验失败 -> RunOp 抛 InvalidOperationException（绝不静默）
+                    try
+                    {
+                        s2.NewBranch("bad..name", "master");
+                        throw new System.Exception("SMOKE FAIL: invalid branch name accepted");
+                    }
+                    catch (InvalidOperationException) { }
                     var st2 = s2.LoadStatus();
                     if (st2.Entries.Count != 0)
                         throw new System.Exception("SMOKE FAIL: e2e clean after commit");
@@ -322,6 +329,29 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: e2e history");
                 }
                 DeleteDir(e2eDir);
+
+                // 17) 路径归一化（Windows 反斜杠 -> 正斜杠；修复文件名误显 "\t"-类污染）
+                var winEntry = ChangesTree.BuildFromEntries(new List<GitStatusEntry>
+                {
+                    new GitStatusEntry("Assets\\test.txt", "Assets\\test.txt", "p",
+                        GitFileStatus.Untracked, GitFileStatus.Untracked),
+                })[0];
+                if (winEntry.Path != "Assets/test.txt" || winEntry.OpsPath != "Assets/test.txt"
+                    || ChangesTree.DisplayName(winEntry) != "test.txt")
+                    throw new System.Exception("SMOKE FAIL: backslash path not normalized");
+
+                // 18) 长边箭头命中（JetBrains 语义：点击箭头跳转对端提交；纯函数命中测试）
+                var arrowHits = new List<GraphTable.ArrowHit>
+                {
+                    new GraphTable.ArrowHit { Area = new Rect(2f, 2f, 10f, 10f), TargetRow = 5 },
+                    new GraphTable.ArrowHit { Area = new Rect(20f, 6f, 10f, 10f), TargetRow = 8 },
+                };
+                if (GraphTable.HitTestArrow(arrowHits, new Vector2(5f, 5f)) != 5)
+                    throw new System.Exception("SMOKE FAIL: arrow hit 1");
+                if (GraphTable.HitTestArrow(arrowHits, new Vector2(25f, 8f)) != 8)
+                    throw new System.Exception("SMOKE FAIL: arrow hit 2");
+                if (GraphTable.HitTestArrow(arrowHits, new Vector2(60f, 60f)) != -1)
+                    throw new System.Exception("SMOKE FAIL: arrow miss");
 
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
@@ -743,12 +773,34 @@ namespace KF.GitUI
             output = outp;
         }
 
-        /// <summary>冒烟辅助：递归删除（git 松散对象文件带只读属性，Directory.Delete 会拒绝）。</summary>
+        /// <summary>
+        /// 冒烟辅助：递归删除。git 松散对象文件带只读属性，Directory.Delete 会拒绝 → 先清属性；
+        /// 本机 EDR/杀软可能短暂持有新文件句柄（UnauthorizedAccess），带重试。
+        /// </summary>
         private static void DeleteDir(string dir)
         {
-            foreach (var f in System.IO.Directory.GetFiles(dir, "*", System.IO.SearchOption.AllDirectories))
-                System.IO.File.SetAttributes(f, System.IO.FileAttributes.Normal);
-            System.IO.Directory.Delete(dir, true);
+            if (!System.IO.Directory.Exists(dir)) return;
+            for (var attempt = 0; attempt < 8; attempt++)
+            {
+                try
+                {
+                    foreach (var f in System.IO.Directory.GetFiles(dir, "*", System.IO.SearchOption.AllDirectories))
+                    {
+                        try { System.IO.File.SetAttributes(f, System.IO.FileAttributes.Normal); } catch { }
+                    }
+                    foreach (var d in System.IO.Directory.GetDirectories(dir, "*", System.IO.SearchOption.AllDirectories))
+                    {
+                        try { System.IO.File.SetAttributes(d, System.IO.FileAttributes.Normal); } catch { }
+                    }
+                    System.IO.Directory.Delete(dir, true);
+                    return;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    System.Threading.Thread.Sleep(750);
+                }
+            }
+            throw new UnauthorizedAccessException("DeleteDir retries exhausted: " + dir);
         }
 
         /// <summary>轻量模态输入窗（JetBrains 风格文本输入；EditorUtility 无 InputDialog）。</summary>

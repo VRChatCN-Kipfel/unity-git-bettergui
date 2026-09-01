@@ -119,6 +119,12 @@ namespace KF.GitUI
             }
         }
 
+        /// <summary>路径归一化：Windows 反斜杠统一正斜杠（git 输出恒为正斜杠，但用户/工具可能给出反斜杠）。</summary>
+        private static string NPath(string p)
+        {
+            return string.IsNullOrEmpty(p) ? p : p.Replace('\\', '/');
+        }
+
         /// <summary>工作区条目 → 节点（X/Y 双列状态，如 "M" / "AM"；引用原条目供操作）。</summary>
         public static ChangeItem FromEntry(GitStatusEntry e)
         {
@@ -126,10 +132,11 @@ namespace KF.GitUI
             var y = StatusChar(e.WorkTreeStatus);
             var st = x != ' ' && y != ' ' ? x.ToString() + y
                 : x != ' ' ? x.ToString() : y.ToString();
+            var p = NPath(e.path);
             return new ChangeItem
             {
-                Path = e.path,
-                OpsPath = e.path,
+                Path = p,
+                OpsPath = p,
                 StatusText = st,
                 IsStaged = e.Staged,
                 Entry = e,
@@ -138,7 +145,14 @@ namespace KF.GitUI
 
         public static ChangeItem FromDiff(char status, string path)
         {
-            return new ChangeItem { Path = path, OpsPath = path, StatusText = status.ToString() };
+            var p = NPath(path);
+            return new ChangeItem { Path = p, OpsPath = p, StatusText = status.ToString() };
+        }
+
+        /// <summary>行显示名（末段 basename；断言/UI 共用）。</summary>
+        public static string DisplayName(ChangeItem item)
+        {
+            return item == null ? "" : Segment(item.Path);
         }
 
         public static List<ChangeItem> BuildFromEntries(List<GitStatusEntry> entries)
@@ -315,7 +329,7 @@ namespace KF.GitUI
             chip.style.visibility = string.IsNullOrEmpty(item.StatusText)
                 ? Visibility.Hidden : Visibility.Visible;
 
-            name.text = Segment(item.Path);
+            name.text = DisplayName(item);
             name.tooltip = item.Path;
 
             if (mode == Mode.Checkable)

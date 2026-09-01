@@ -337,7 +337,16 @@ namespace KF.GitUI
         private void RunOp<T>(string name, IProcessTask<T> task)
         {
             Prepare(task);
-            task.RunSynchronously();
+            try
+            {
+                task.RunSynchronously();
+            }
+            catch (ProcessException ex)
+            {
+                // git 失败（stderr 非零）时 api 在 RunSynchronously 内直接重抛 ProcessException；
+                // 统一包装为 InvalidOperationException，调用方（菜单/弹窗/冒烟）只依赖这一种失败形态。
+                throw new InvalidOperationException(name + " failed:\n" + ex.Message, ex);
+            }
             if (task.Successful) return;
             var err = task.Errors;
             throw new InvalidOperationException(name + " failed"
@@ -353,7 +362,15 @@ namespace KF.GitUI
             var task = new GitStatusTask(platform, new GitObjectFactory(environment))
                 .Configure(platform.ProcessManager);
             Prepare(task);
-            var result = task.RunSynchronously();
+            GitStatus result;
+            try
+            {
+                result = task.RunSynchronously();
+            }
+            catch (ProcessException ex)
+            {
+                throw new InvalidOperationException("git status failed:\n" + ex.Message, ex);
+            }
             if (!task.Successful)
                 throw new InvalidOperationException("git status failed" +
                     (string.IsNullOrEmpty(task.Errors) ? "" : ":\n" + task.Errors));

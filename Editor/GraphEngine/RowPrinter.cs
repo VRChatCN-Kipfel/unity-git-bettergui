@@ -62,6 +62,13 @@ namespace KF.GitUI
         public IReadOnlyList<NodePrint> GetNodesInRow(int r) => nodes[r];
         public IReadOnlyList<EdgePrint> GetEdgesInRow(int r) => edges[r];
         public int RowElementCount(int r) => sortedElements[r].Count;
+
+        /// <summary>
+        /// 该行元素带长度（= 行内最大槽位 + 1）。JetBrains GraphCommitCellRenderer 的
+        /// per-cell graphWidth 语义：渲染/文本缩进一律以"行内槽位"为列口径（每行按需压缩，
+        /// 不存在的泳道不占宽）；全局 lane 号只用于排序/着色。即用户要求的"实时计算需要占据的泳道"。
+        /// </summary>
+        public int RowWidth(int r) => sortedElements[r].Count;
         public int LayoutIndex(int nodeIndex) => layout.GetLayoutIndex(nodeIndex);
         public int GetNodePosition(int r) => nodePosition[r];
 
