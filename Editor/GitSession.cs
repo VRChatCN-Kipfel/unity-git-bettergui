@@ -447,6 +447,12 @@ namespace KF.GitUI
             RunOp("git tag -a", new GitTagTask(platform, name, commitHash, message).Configure(platform.ProcessManager));
         }
 
+        /// <summary>删除标签（git tag -d name）。</summary>
+        public void DeleteTag(string name)
+        {
+            RunOp("git tag -d", new GitTagDeleteTask(platform, name).Configure(platform.ProcessManager));
+        }
+
         /// <summary>使 refs 缓存失效（分支弹窗新建/删除/打标签后调用；历史/状态缓存不受影响）。</summary>
         public void InvalidateRefs()
         {

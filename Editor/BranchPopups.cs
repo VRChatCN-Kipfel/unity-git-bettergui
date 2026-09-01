@@ -25,6 +25,10 @@ namespace KF.GitUI
         private int currentAhead;
         private int currentBehind;
         private Vector2 scroll;
+        // 分组折叠（JetBrains branches tree 语义：本地/远程/标签三类，各自可展开/收起）
+        private bool localExpanded = true;
+        private bool remoteExpanded = true;
+        private bool tagsExpanded = true;
 
         public static void Open(GitSession session, Action onChanged)
         {
@@ -67,25 +71,15 @@ namespace KF.GitUI
             var filtered = ApplyFilter(allRefs, filter);
 
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            foreach (var r in filtered)
-            {
-                var label = r.DisplayName;
-                if (r.IsCurrentHead || r.Type == GitSession.RefType.Head)
-                    label += "  (" + I18n.L(I18n.Keys.BranchCurrent) + ")";
-                if (r.DisplayName == currentBranch && (currentAhead > 0 || currentBehind > 0))
-                    label += string.Format("  ↑{0} ↓{1}", currentAhead, currentBehind);
 
-                var isLocal = r.Type == GitSession.RefType.Local || r.Type == GitSession.RefType.Head;
-                var canDelete = isLocal && !r.IsCurrentHead;
+            var locals = filtered.Where(r => r.Type == GitSession.RefType.Local || r.Type == GitSession.RefType.Head).ToList();
+            var remotes = filtered.Where(r => r.Type == GitSession.RefType.Remote).ToList();
+            var tags = filtered.Where(r => r.Type == GitSession.RefType.Tag).ToList();
 
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button(label, canDelete ? EditorStyles.miniButton : EditorStyles.miniButtonLeft))
-                    CheckoutRef(r);
-                if (canDelete && GUILayout.Button(I18n.L(I18n.Keys.BranchDelete),
-                        EditorStyles.miniButtonRight, GUILayout.Width(48)))
-                    DeleteRef(r);
-                EditorGUILayout.EndHorizontal();
-            }
+            DrawSection(I18n.L(I18n.Keys.BranchGroupLocal), ref localExpanded, locals);
+            DrawSection(I18n.L(I18n.Keys.BranchGroupRemote), ref remoteExpanded, remotes);
+            DrawSection(I18n.L(I18n.Keys.BranchGroupTags), ref tagsExpanded, tags);
+
             EditorGUILayout.EndScrollView();
 
             EditorGUILayout.BeginHorizontal();
@@ -100,6 +94,35 @@ namespace KF.GitUI
 
             if (!string.IsNullOrEmpty(error))
                 EditorGUILayout.HelpBox(error, MessageType.Error);
+        }
+
+        private void DrawSection(string header, ref bool expanded, List<GitSession.GitRefInfo> refs)
+        {
+            if (refs.Count == 0) return;
+            expanded = EditorGUILayout.Foldout(expanded, header + "  (" + refs.Count + ")", true);
+            if (!expanded) return;
+            foreach (var r in refs)
+                RenderRow(r);
+        }
+
+        private void RenderRow(GitSession.GitRefInfo r)
+        {
+            var label = r.DisplayName;
+            if (r.IsCurrentHead || r.Type == GitSession.RefType.Head)
+                label += "  (" + I18n.L(I18n.Keys.BranchCurrent) + ")";
+            if (r.DisplayName == currentBranch && (currentAhead > 0 || currentBehind > 0))
+                label += string.Format("  ↑{0} ↓{1}", currentAhead, currentBehind);
+
+            var isLocal = r.Type == GitSession.RefType.Local || r.Type == GitSession.RefType.Head;
+            var canDelete = (isLocal && !r.IsCurrentHead) || r.Type == GitSession.RefType.Tag;
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(label, canDelete ? EditorStyles.miniButton : EditorStyles.miniButtonLeft))
+                CheckoutRef(r);
+            if (canDelete && GUILayout.Button(I18n.L(I18n.Keys.BranchDelete),
+                    EditorStyles.miniButtonRight, GUILayout.Width(48)))
+                DeleteRef(r);
+            EditorGUILayout.EndHorizontal();
         }
 
         private void CheckoutRef(GitSession.GitRefInfo r)
@@ -122,6 +145,18 @@ namespace KF.GitUI
         private void DeleteRef(GitSession.GitRefInfo r)
         {
             error = string.Empty;
+            if (r.Type == GitSession.RefType.Tag)
+            {
+                if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.BranchDelete),
+                        I18n.L(I18n.Keys.BranchDeleteTagConfirm, r.DisplayName),
+                        I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                    return;
+                try { session.DeleteTag(r.DisplayName); }
+                catch (Exception ex) { error = ex.Message; }
+                onChanged?.Invoke();
+                Reload();
+                return;
+            }
             if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.BranchDelete),
                     I18n.L(I18n.Keys.BranchDeleteConfirm, r.DisplayName),
                     I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))

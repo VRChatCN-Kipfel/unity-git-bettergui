@@ -84,7 +84,11 @@ namespace KF.GitUI
         public const string BranchTag = "branch.tag";
         public const string BranchDelete = "branch.delete";
         public const string BranchDeleteConfirm = "branch.deleteConfirm"; // {0}=分支名
+        public const string BranchDeleteTagConfirm = "branch.deleteTagConfirm"; // {0}=标签名
         public const string BranchDeleteForce = "branch.deleteForce"; // {0}=分支名
+        public const string BranchGroupLocal = "branch.groupLocal";
+        public const string BranchGroupRemote = "branch.groupRemote";
+        public const string BranchGroupTags = "branch.groupTags";
         public const string BranchCheckoutTagConfirm = "branch.checkoutTagConfirm"; // {0}=标签名
         public const string CompareResultTitle = "compare.resultTitle"; // {0}=提交短号
         public const string CompareNoChanges = "compare.noChanges";
