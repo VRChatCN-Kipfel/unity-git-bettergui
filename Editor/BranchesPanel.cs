@@ -27,6 +27,10 @@ namespace KF.GitUI
         private int currentAhead;
         private int currentBehind;
 
+        private const string PrefLocal = "kf.gitui.branches.localExpanded";
+        private const string PrefRemote = "kf.gitui.branches.remoteExpanded";
+        private const string PrefTags = "kf.gitui.branches.tagsExpanded";
+
         private bool localExpanded = true;
         private bool remoteExpanded = true;
         private bool tagsExpanded = true;
@@ -37,6 +41,11 @@ namespace KF.GitUI
             style.flexGrow = 1f;
             style.flexDirection = FlexDirection.Column;
             style.minWidth = 150f;
+
+            // 折叠状态持久化（EditorPrefs；重启后保持用户上次的分组展开/收起）
+            localExpanded = EditorPrefs.GetBool(PrefLocal, true);
+            remoteExpanded = EditorPrefs.GetBool(PrefRemote, true);
+            tagsExpanded = EditorPrefs.GetBool(PrefTags, true);
 
             filterField = new TextField(I18n.L(I18n.Keys.BranchFilter));
             filterField.name = "branches-filter";
@@ -111,22 +120,32 @@ namespace KF.GitUI
             Rebuild();
         }
 
+        /// <summary>过滤（JetBrains GitBranchesSearcher 语义：空格分词，全部 token 子串命中，忽略大小写）。</summary>
+        public static List<GitSession.GitRefInfo> ApplyFilter(IEnumerable<GitSession.GitRefInfo> all, string filter)
+        {
+            var tokens = (filter ?? string.Empty).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0) return all.ToList();
+            return all.Where(r => tokens.All(t =>
+                    r.DisplayName.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0))
+                .ToList();
+        }
+
         private void Rebuild()
         {
             scroll.Clear();
             if (session == null) return;
 
-            var filtered = BranchPopupWindow.ApplyFilter(allRefs, filterField.value);
+            var filtered = ApplyFilter(allRefs, filterField.value);
             var locals = filtered.Where(r => r.Type == GitSession.RefType.Local || r.Type == GitSession.RefType.Head).ToList();
             var remotes = filtered.Where(r => r.Type == GitSession.RefType.Remote).ToList();
             var tags = filtered.Where(r => r.Type == GitSession.RefType.Tag).ToList();
 
             DrawSection(I18n.L(I18n.Keys.BranchGroupLocal), localExpanded,
-                () => { localExpanded = !localExpanded; Rebuild(); }, locals);
+                () => { localExpanded = !localExpanded; EditorPrefs.SetBool(PrefLocal, localExpanded); Rebuild(); }, locals);
             DrawSection(I18n.L(I18n.Keys.BranchGroupRemote), remoteExpanded,
-                () => { remoteExpanded = !remoteExpanded; Rebuild(); }, remotes);
+                () => { remoteExpanded = !remoteExpanded; EditorPrefs.SetBool(PrefRemote, remoteExpanded); Rebuild(); }, remotes);
             DrawSection(I18n.L(I18n.Keys.BranchGroupTags), tagsExpanded,
-                () => { tagsExpanded = !tagsExpanded; Rebuild(); }, tags);
+                () => { tagsExpanded = !tagsExpanded; EditorPrefs.SetBool(PrefTags, tagsExpanded); Rebuild(); }, tags);
         }
 
         private void DrawSection(string title, bool expanded, Action toggle, List<GitSession.GitRefInfo> refs)

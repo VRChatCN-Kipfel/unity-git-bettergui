@@ -237,13 +237,13 @@ namespace KF.GitUI
                 if (GitWindow.BuildCommitContextActions(s, log, 999, () => { }).Any())
                     throw new System.Exception("SMOKE FAIL: commit menu out-of-range should be empty");
                 // 15) 分支弹窗：过滤（空格分词、全 token 命中、忽略大小写）
-                var fAll = BranchPopupWindow.ApplyFilter(refs, "");
+                var fAll = BranchesPanel.ApplyFilter(refs, "");
                 if (fAll.Count != refs.Count)
                     throw new System.Exception("SMOKE FAIL: branch filter empty != all");
-                var fFeat = BranchPopupWindow.ApplyFilter(refs, "feature");
+                var fFeat = BranchesPanel.ApplyFilter(refs, "feature");
                 if (fFeat.Count != 2)
                     throw new System.Exception($"SMOKE FAIL: branch filter 'feature' count={fFeat.Count} expect 2");
-                if (BranchPopupWindow.ApplyFilter(refs, "NOPE99").Count != 0)
+                if (BranchesPanel.ApplyFilter(refs, "NOPE99").Count != 0)
                     throw new System.Exception("SMOKE FAIL: branch filter nomatch != 0");
 
                 // 13) Commit 数据通道：状态解析 + gpg 探测（stderr 子串）
@@ -1024,6 +1024,7 @@ namespace KF.GitUI
         private List<GitStatusEntry> workingEntries = new List<GitStatusEntry>();
         private BranchesPanel branchesPanel;
         private VisualElement branchesPane;
+        private const string PrefBranchesPane = "kf.gitui.branches.paneVisible";
         private bool branchesPaneVisible = true;
 
         private VisualElement BuildLayout()
@@ -1057,6 +1058,8 @@ namespace KF.GitUI
             branchesPane = branchesPaneEl;
             branchesPaneEl.name = "branches-pane";
             branchesPaneEl.style.flexDirection = FlexDirection.Column;
+            branchesPaneVisible = EditorPrefs.GetBool(PrefBranchesPane, true);
+            branchesPaneEl.style.display = branchesPaneVisible ? DisplayStyle.Flex : DisplayStyle.None;
             var title = new Label(I18n.L(I18n.Keys.BranchTitle));
             title.style.paddingTop = 2;
             title.style.paddingLeft = 6;
@@ -1088,6 +1091,7 @@ namespace KF.GitUI
         private void ToggleBranchesPane()
         {
             branchesPaneVisible = !branchesPaneVisible;
+            EditorPrefs.SetBool(PrefBranchesPane, branchesPaneVisible);
             if (branchesPane != null)
                 branchesPane.style.display = branchesPaneVisible ? DisplayStyle.Flex : DisplayStyle.None;
         }

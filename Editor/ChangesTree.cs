@@ -85,6 +85,7 @@ namespace KF.GitUI
         public void SetFiles(List<ChangeItem> files)
         {
             tree.SetRootItems(Group(files ?? new List<ChangeItem>()));
+            tree.ExpandAll(); // SetRootItems 初值不随 autoExpand 展开（2022.3 实测），强制全展开保持打开即见
             SelectedItem = null;
         }
 
@@ -95,6 +96,7 @@ namespace KF.GitUI
         public void SetFilesSectioned(List<(string Header, List<ChangeItem> Items)> sections)
         {
             tree.SetRootItems(BuildSectioned(sections));
+            tree.ExpandAll();
             SelectedItem = null;
         }
 
