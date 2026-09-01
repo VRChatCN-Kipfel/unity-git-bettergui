@@ -148,14 +148,15 @@ namespace KF.GitUI
         }
 
         /// <summary>
-        /// 行文本（JetBrains 直觉）：主分支（main/master）左侧 ⭐；当前签出分支名前 🏷；当前分支带 ↑↓。
+        /// 行文本（JetBrains 直觉）：主分支（main/master）左侧 ★；当前签出分支名前 »；当前分支带 ↑↓。
+        /// 用最基础的 BMP 通用符号（Unity 默认字体缺 emoji 与部分 Dingbats 字形，U+2B50/U+1F3F7/U+276F 会渲染成 □）。
         /// 静态可测。
         /// </summary>
         public static string FormatRefLabel(string name, bool isMain, bool isCurrent, int ahead, int behind)
         {
             var sb = new System.Text.StringBuilder();
-            if (isMain) sb.Append("⭐ ");
-            if (isCurrent) sb.Append("🏷 ");
+            if (isMain) sb.Append("★ ");
+            if (isCurrent) sb.Append("» ");
             sb.Append(name);
             if (isCurrent && (ahead > 0 || behind > 0))
                 sb.Append(string.Format("  ↑{0} ↓{1}", ahead, behind));
