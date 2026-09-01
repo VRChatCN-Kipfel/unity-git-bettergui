@@ -144,12 +144,46 @@ namespace KF.GitUI
 
         private string DisplayText(GitSession.GitRefInfo r)
         {
-            var label = r.DisplayName;
-            if (r.Type == GitSession.RefType.Head)
-                label += "  (" + I18n.L(I18n.Keys.BranchCurrent) + ")";
-            if (r.DisplayName == currentBranch && (currentAhead > 0 || currentBehind > 0))
-                label += string.Format("  ↑{0} ↓{1}", currentAhead, currentBehind);
-            return label;
+            return FormatRefLabel(r.DisplayName, IsMainBranch(r), IsCurrentBranch(r), currentAhead, currentBehind);
+        }
+
+        /// <summary>
+        /// 行文本（JetBrains 直觉）：主分支（main/master）左侧 ⭐；当前签出分支名前 🏷；当前分支带 ↑↓。
+        /// 静态可测。
+        /// </summary>
+        public static string FormatRefLabel(string name, bool isMain, bool isCurrent, int ahead, int behind)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (isMain) sb.Append("⭐ ");
+            if (isCurrent) sb.Append("🏷 ");
+            sb.Append(name);
+            if (isCurrent && (ahead > 0 || behind > 0))
+                sb.Append(string.Format("  ↑{0} ↓{1}", ahead, behind));
+            return sb.ToString();
+        }
+
+        private bool IsCurrentBranch(GitSession.GitRefInfo r)
+        {
+            return r.Type == GitSession.RefType.Head || r.DisplayName == currentBranch;
+        }
+
+        private bool IsMainBranch(GitSession.GitRefInfo r)
+        {
+            if (r.Type != GitSession.RefType.Local && r.Type != GitSession.RefType.Head) return false;
+            return r.DisplayName == "main" || r.DisplayName == "master";
+        }
+
+        private static readonly Color SelBg = new Color(0.25f, 0.45f, 0.75f, 0.55f);
+        private static readonly Color HoverBg = new Color(0.35f, 0.55f, 0.85f, 0.30f);
+
+        private string selectedName = string.Empty;
+
+        /// <summary>单击选中（深蓝）；取消选中传 null。</summary>
+        private void SetSelected(string name)
+        {
+            if (selectedName == name) return;
+            selectedName = name ?? string.Empty;
+            Rebuild();
         }
 
         private VisualElement RenderRow(GitSession.GitRefInfo r)
@@ -159,6 +193,7 @@ namespace KF.GitUI
             row.style.height = 20f;
             row.style.alignItems = Align.Center;
             row.style.paddingLeft = 6f;
+            ApplyRowStyle(row, r, false);
 
             var label = new Label(DisplayText(r));
             label.style.flexGrow = 1f;
@@ -168,10 +203,28 @@ namespace KF.GitUI
             label.tooltip = r.Upstream ?? r.DisplayName;
             row.Add(label);
 
-            row.RegisterCallback<ClickEvent>(_ => DoCheckout(session, r, onChanged, ShowError));
+            // 单击 = 选中（深蓝）；双击 = 签出（JetBrains 交互惯例）
+            row.RegisterCallback<ClickEvent>(ev =>
+            {
+                if (ev.clickCount >= 2)
+                    DoCheckout(session, r, onChanged, ShowError);
+                else
+                    SetSelected(r.DisplayName);
+            });
+            row.RegisterCallback<MouseEnterEvent>(_ => ApplyRowStyle(row, r, true));
+            row.RegisterCallback<MouseLeaveEvent>(_ => ApplyRowStyle(row, r, false));
             GitContextMenu.Attach(row,
                 () => BuildContextActions(session, r, currentBranch, onChanged, ShowError));
             return row;
+        }
+
+        /// <summary>行背景：选中=深蓝；悬停=浅蓝；否则透明（悬停不覆盖选中）。</summary>
+        private void ApplyRowStyle(VisualElement row, GitSession.GitRefInfo r, bool hover)
+        {
+            if (selectedName == r.DisplayName)
+                row.style.backgroundColor = SelBg;
+            else
+                row.style.backgroundColor = hover ? HoverBg : Color.clear;
         }
 
         // ---- 右键动作（静态构建，冒烟可断言） ----

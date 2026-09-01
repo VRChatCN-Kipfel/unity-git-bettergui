@@ -393,6 +393,16 @@ namespace KF.GitUI
                 if (!tagTexts.Contains("Checkout") || !tagTexts.Contains("Delete") || tagTexts.Contains("Rename…"))
                     throw new System.Exception("SMOKE FAIL: tag ctx");
 
+                // 20) 分支行文本标识（JetBrains 直觉：主分支 ⭐ / 当前分支 🏷 / ↑↓）
+                if (BranchesPanel.FormatRefLabel("main", true, true, 0, 0) != "⭐ 🏷 main")
+                    throw new System.Exception("SMOKE FAIL: label main+current");
+                if (BranchesPanel.FormatRefLabel("main", true, false, 0, 0) != "⭐ main")
+                    throw new System.Exception("SMOKE FAIL: label main");
+                if (BranchesPanel.FormatRefLabel("feature/x", false, false, 2, 1) != "feature/x")
+                    throw new System.Exception("SMOKE FAIL: label plain");
+                if (BranchesPanel.FormatRefLabel("feature/x", false, true, 2, 0) != "🏷 feature/x  ↑2 ↓0")
+                    throw new System.Exception("SMOKE FAIL: label current+ahead");
+
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
