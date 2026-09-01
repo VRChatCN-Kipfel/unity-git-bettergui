@@ -260,7 +260,9 @@ namespace KF.GitUI
                 // 14) Commit 页结构 + 文件/目录语境右键（静态 Builder 断言）
                 if (root.Q<VisualElement>("toolbar") == null
                     || root.Q<Button>("tab-log") == null || root.Q<Button>("tab-commit") == null
-                    || root.Q<VisualElement>("page-log") == null || root.Q<VisualElement>("page-commit") == null)
+                    || root.Q<VisualElement>("page-log") == null || root.Q<VisualElement>("page-commit") == null
+                    || root.Q<TwoPaneSplitView>("body-split") == null
+                    || root.Q<BranchesPanel>("branches-panel") == null)
                     throw new System.Exception("SMOKE FAIL: tabs structure");
                 if (root.Q<ChangesTree>("commit-tree") == null || root.Q<TextField>("msg-summary") == null)
                     throw new System.Exception("SMOKE FAIL: commit page fields");
@@ -851,6 +853,7 @@ namespace KF.GitUI
             {
                 session = GitSession.Open(Environment.CurrentDirectory);
                 lastFingerprint = session.GetFingerprint();
+                branchesPanel?.Bind(session, OnBranchesChanged);
                 RefreshData();
                 RefreshWorkingStatus();
             }
@@ -871,6 +874,7 @@ namespace KF.GitUI
             session.InvalidateCaches(); // refs 等可变数据失效（提交变更缓存保留：不可变）
             logEntries = session.LoadHistory(200);
             BuildGraphPipeline();
+            branchesPanel?.Refresh(); // refs 变化同步到左侧分支面板
 
             if (keepCommit != null)
                 for (var i = 0; i < logEntries.Count; i++)
@@ -1018,13 +1022,16 @@ namespace KF.GitUI
         private Label commitError;
         private Button commitButton;
         private List<GitStatusEntry> workingEntries = new List<GitStatusEntry>();
+        private BranchesPanel branchesPanel;
+        private VisualElement branchesPane;
+        private bool branchesPaneVisible = true;
 
         private VisualElement BuildLayout()
         {
             var root = new VisualElement();
             root.style.flexGrow = 1f;
 
-            // 顶部工具条：Log | Commit Tab（JetBrains VCS toolwindow tabs 语义）
+            // 顶部工具条：Log | Commit Tab + Branches（侧栏开关，JetBrains VCS toolwindow tabs 语义）
             var toolbar = new VisualElement();
             toolbar.name = "toolbar";
             toolbar.style.flexDirection = FlexDirection.Row;
@@ -1037,11 +1044,27 @@ namespace KF.GitUI
             tabCommit.name = "tab-commit";
             toolbar.Add(tabLog);
             toolbar.Add(tabCommit);
-            var branchesBtn = new Button(() => BranchPopupWindow.Open(session, OnBranchesChanged))
-            { text = I18n.L(I18n.Keys.BranchTitle) };
+            var branchesBtn = new Button(ToggleBranchesPane) { text = I18n.L(I18n.Keys.BranchTitle) };
             branchesBtn.name = "btn-branches";
             toolbar.Add(branchesBtn);
             root.Add(toolbar);
+
+            // 主体：左 = 常驻分支面板（用户拍板保留在主窗口左侧，不弹窗）；右 = Log|Commit 页面
+            var bodySplit = new TwoPaneSplitView(0, 210, TwoPaneSplitViewOrientation.Horizontal);
+            bodySplit.name = "body-split";
+
+            var branchesPaneEl = new VisualElement();
+            branchesPane = branchesPaneEl;
+            branchesPaneEl.name = "branches-pane";
+            branchesPaneEl.style.flexDirection = FlexDirection.Column;
+            var title = new Label(I18n.L(I18n.Keys.BranchTitle));
+            title.style.paddingTop = 2;
+            title.style.paddingLeft = 6;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            branchesPaneEl.Add(title);
+            branchesPanel = new BranchesPanel();
+            branchesPaneEl.Add(branchesPanel);
+            bodySplit.Add(branchesPaneEl);
 
             // 页面容器：两个页面各自保留状态，仅切换 display
             var pagesHost = new VisualElement();
@@ -1055,10 +1078,18 @@ namespace KF.GitUI
             pageCommit.name = "page-commit";
             pagesHost.Add(pageLog);
             pagesHost.Add(pageCommit);
-            root.Add(pagesHost);
+            bodySplit.Add(pagesHost);
+            root.Add(bodySplit);
 
             ActivateTab(0);
             return root;
+        }
+
+        private void ToggleBranchesPane()
+        {
+            branchesPaneVisible = !branchesPaneVisible;
+            if (branchesPane != null)
+                branchesPane.style.display = branchesPaneVisible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         private void ActivateTab(int index)
