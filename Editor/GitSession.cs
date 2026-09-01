@@ -260,13 +260,15 @@ namespace KF.GitUI
         /// <summary>ref 类型（排序组）。</summary>
         public enum RefType { Head, Local, Remote, Tag }
 
-        /// <summary>一条 ref 标签（显示名 + 目标提交）。</summary>
+        /// <summary>一条 ref 标签（显示名 + 目标提交 + 可选跟踪上游）。</summary>
         public sealed class GitRefInfo
         {
             public RefType Type;
             public string DisplayName;
             public string CommitId;
             public bool IsCurrentHead;
+            /// <summary>本地分支跟踪的远程分支（如 "origin/main"）；远程/标签/未跟踪为 null。</summary>
+            public string Upstream;
         }
 
         private List<GitRefInfo> refsCache; // refs 可变：会话级缓存，后续由 RepositoryWatcher 失效
@@ -292,6 +294,8 @@ namespace KF.GitUI
                     var refName = parts[0];
                     var commit = parts[1];
                     var isHead = parts.Length > 2 && parts[2].Trim() == "*";
+                    var upstream = parts.Length > 3 ? parts[3].Trim() : null;
+                    if (string.IsNullOrEmpty(upstream)) upstream = null;
 
                     GitRefInfo info;
                     if (refName.StartsWith("refs/remotes/", StringComparison.Ordinal))
@@ -299,7 +303,7 @@ namespace KF.GitUI
                     else if (refName.StartsWith("refs/tags/", StringComparison.Ordinal))
                         info = new GitRefInfo { Type = RefType.Tag, DisplayName = refName.Substring("refs/tags/".Length), CommitId = commit };
                     else if (refName.StartsWith("refs/heads/", StringComparison.Ordinal))
-                        info = new GitRefInfo { Type = isHead ? RefType.Head : RefType.Local, DisplayName = refName.Substring("refs/heads/".Length), CommitId = commit, IsCurrentHead = isHead };
+                        info = new GitRefInfo { Type = isHead ? RefType.Head : RefType.Local, DisplayName = refName.Substring("refs/heads/".Length), CommitId = commit, IsCurrentHead = isHead, Upstream = upstream };
                     else
                         continue;
                     result.Add(info);
@@ -451,6 +455,48 @@ namespace KF.GitUI
         public void DeleteTag(string name)
         {
             RunOp("git tag -d", new GitTagDeleteTask(platform, name).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>更新当前分支（git pull 到其上游；无上游时 git 报错经 stderr 回显）。</summary>
+        public void Pull()
+        {
+            RunOp("git pull", new GitPullTask(platform, null, null).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>从指定 remote/branch 拉取合并（git pull remote branch）。</summary>
+        public void Pull(string remote, string branch)
+        {
+            RunOp("git pull", new GitPullTask(platform, remote, branch).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>推送当前分支到其上游（git push）。</summary>
+        public void Push()
+        {
+            RunOp("git push", new GitPushTask(platform).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>推送分支到指定远程（git push [-u] remote branch:branch）。</summary>
+        public void Push(string remote, string branch, bool setUpstream)
+        {
+            RunOp("git push", new GitPushTask(platform, remote, branch, setUpstream).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>合并 ref 到当前分支（git merge --no-edit）。</summary>
+        public void Merge(string gitRef)
+        {
+            RunOp("git merge", new GitMergeTask(platform, gitRef).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>本地分支重命名（git branch -m）。</summary>
+        public void RenameBranch(string oldName, string newName)
+        {
+            RunOp("git branch -m", new GitBranchRenameTask(platform, oldName, newName).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>提取（git fetch --prune --tags [remote]；remote 空 = 全部远程）。</summary>
+        public void Fetch(string remote)
+        {
+            RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
         /// <summary>使 refs 缓存失效（分支弹窗新建/删除/打标签后调用；历史/状态缓存不受影响）。</summary>
