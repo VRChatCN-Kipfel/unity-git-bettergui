@@ -309,8 +309,22 @@ namespace KF.GitUI
                 yield return new DelegateAction("ctx.upstream.merge",
                     prefix + "/" + I18n.L(I18n.Keys.BranchCtxUpstreamMerge, cur),
                     () => DoMergeIntoCurrent(session, upstream, cur, onChanged, onError));
+                // M3：变基到上游（非交互；冲突走 3-way，§6 固化）
+                yield return new DelegateAction("ctx.upstream.rebase",
+                    prefix + "/" + I18n.L(I18n.Keys.BranchCtxRebaseOntoUpstream, upstream),
+                    () => RunOp(session, () => session.Rebase(upstream), onChanged, onError));
             }
             yield return GitContextSeparator.Instance;
+            // M3 rebase 组（非交互；仅在非当前分支时做"变基当前到它 / 签出并变基"）
+            if (!isCurrent)
+            {
+                yield return new DelegateAction("ctx.rebase.onto",
+                    I18n.L(I18n.Keys.BranchCtxRebaseOnto, target.DisplayName),
+                    () => DoRebaseCurrentOnto(session, target.DisplayName, cur, onChanged, onError));
+                yield return new DelegateAction("ctx.rebase.checkout",
+                    I18n.L(I18n.Keys.BranchCtxCheckoutAndRebase, target.DisplayName),
+                    () => DoCheckoutAndRebase(session, target.DisplayName, cur, onChanged, onError));
+            }
             yield return new DelegateAction("ctx.rename", I18n.L(I18n.Keys.BranchCtxRename),
                 () => DoRename(session, target, onChanged, onError));
             if (!isCurrent)
@@ -390,6 +404,35 @@ namespace KF.GitUI
                 I18n.L(I18n.Keys.BranchCtxNewFrom, baseRef), "");
             if (string.IsNullOrWhiteSpace(name)) return;
             RunOp(session, () => session.NewBranch(name.Trim(), baseRef), onChanged, onError);
+        }
+
+        /// <summary>M3：将当前分支变基到目标分支（git rebase &lt;target&gt;；非交互，§6 固化）。</summary>
+        private static void DoRebaseCurrentOnto(GitSession session, string target, string current,
+            Action onChanged, Action<string> onError)
+        {
+            if (session == null) return;
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.BranchCtxRebaseOnto, target),
+                    I18n.L(I18n.Keys.BranchCtxRebaseOnto, target) + "?",
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            RunOp(session, () => session.Rebase(target), onChanged, onError);
+        }
+
+        /// <summary>M3：签出目标分支并把当前分支变基到它（checkout target → rebase current）。</summary>
+        private static void DoCheckoutAndRebase(GitSession session, string target, string current,
+            Action onChanged, Action<string> onError)
+        {
+            if (session == null || string.IsNullOrEmpty(current)) return;
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.BranchCtxCheckoutAndRebase, target),
+                    I18n.L(I18n.Keys.BranchCtxCheckoutAndRebase, target) + "?",
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            // checkout 目标分支 → rebase 原当前分支（变基后留在目标分支上的原分支提交会被重放）
+            RunOp(session, () =>
+            {
+                session.Checkout(target);
+                session.Rebase(current);
+            }, onChanged, onError);
         }
 
         private static void DoRename(GitSession session, GitSession.GitRefInfo target, Action onChanged, Action<string> onError)

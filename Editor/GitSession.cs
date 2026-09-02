@@ -557,6 +557,86 @@ namespace KF.GitUI
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
+        /// <summary>
+        /// rebase 进行中判定（M3-SOLUTION §1.1-3 实证）：
+        /// status 首行在 rebase 冲突时为 "## HEAD (no branch)"（GitStatus.LocalBranch 无真实分支名，
+        /// api 解析 "HEAD (no branch)" 后 LocalBranch 为 "HEAD" 或空）+ Unmerged 条目。
+        /// merge 冲突时首行为 "## main"（LocalBranch 有值）。据此区分并统计 UU 数。
+        /// </summary>
+        public static bool AnalyzeRebaseState(GitStatus status, out bool inRebase, out int unmergedCount)
+        {
+            inRebase = false;
+            unmergedCount = 0;
+            if (status == null || status.Entries == null) return false;
+            foreach (var e in status.Entries)
+                if (e.Unmerged) unmergedCount++;
+            var branch = status.LocalBranch ?? string.Empty;
+            // rebase 中：无当前分支（porcelain "## HEAD (no branch)"；api 可能解析为
+            // "HEAD" 或 "HEAD (no branch)" 或 null/空）
+            if (branch.Length == 0 || branch == "HEAD"
+                || branch.StartsWith("HEAD", StringComparison.Ordinal)
+                || branch.Contains("(no branch)", StringComparison.Ordinal))
+                inRebase = unmergedCount > 0;
+            return inRebase;
+        }
+
+        /// <summary>本分支变基到目标分支（git rebase &lt;branch&gt;；非交互）。
+        /// rebase 冲突是**预期结果**不抛异常（由 AnalyzeRebaseState 判定进入冲突态）；
+        /// 仅真实失败（非冲突错误）抛 InvalidOperationException。</summary>
+        public void Rebase(string branch)
+        {
+            var task = new GitRebaseTask(platform, branch).Configure(platform.ProcessManager);
+            Prepare(task);
+            try
+            {
+                task.RunSynchronously();
+            }
+            catch (ProcessException ex)
+            {
+                // 冲突 → 正常进入 rebase 中状态；其它 stderr → 真失败
+                var msg = (ex.Message ?? string.Empty) + "\n" + (task.Errors ?? string.Empty);
+                if (msg.Contains("CONFLICT", StringComparison.OrdinalIgnoreCase)
+                    || AnalyzeRebaseState(LoadStatusQuiet(), out var inR, out var _) && inR)
+                    return;
+                throw new InvalidOperationException("git rebase failed:\n" + msg, ex);
+            }
+            if (!task.Successful)
+            {
+                var err = task.Errors;
+                if ((err ?? string.Empty).Contains("CONFLICT", StringComparison.OrdinalIgnoreCase))
+                    return;
+                throw new InvalidOperationException("git rebase failed"
+                    + (string.IsNullOrEmpty(err) ? "" : ":\n" + err));
+            }
+        }
+
+        private GitStatus LoadStatusQuiet()
+        {
+            try { return LoadStatus(); }
+            catch { return default(GitStatus); }
+        }
+
+        /// <summary>拉取并变基（git pull --rebase &lt;remote&gt; &lt;branch&gt;）。</summary>
+        public void PullRebase(string remote, string branch)
+        {
+            RunOp("git pull --rebase",
+                new GitPullRebaseTask(platform, remote, branch).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>rebase 冲突继续（git rebase --continue）。</summary>
+        public void RebaseContinue()
+        {
+            RunOp("git rebase --continue",
+                new GitRebaseTask(platform, "--continue").Configure(platform.ProcessManager));
+        }
+
+        /// <summary>rebase 中止（git rebase --abort）。</summary>
+        public void RebaseAbort()
+        {
+            RunOp("git rebase --abort",
+                new GitRebaseTask(platform, "--abort").Configure(platform.ProcessManager));
+        }
+
         /// <summary>hunk 级操作（M3-SOLUTION §3.3）：对已捕获的 diff 输出切片目标 hunk → git apply 三态。</summary>
         /// <param name="diffOutput">git diff 完整输出（工作区 diff 或 --cached diff，取决于 mode 语义）。</param>
         /// <param name="fileIndex">目标文件序号（0 基）。</param>

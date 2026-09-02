@@ -114,6 +114,14 @@ namespace KF.GitUI
         public const string CompareResultTitle = "compare.resultTitle"; // {0}=提交短号
         public const string CompareNoChanges = "compare.noChanges";
         public const string CompareBack = "compare.back";
+
+        // M3 rebase 系
+        public const string BranchCtxRebaseOnto = "branch.ctx.rebaseOnto"; // {0}=目标
+        public const string BranchCtxCheckoutAndRebase = "branch.ctx.checkoutAndRebase"; // {0}=当前
+        public const string BranchCtxRebaseOntoUpstream = "branch.ctx.rebaseOntoUpstream"; // {0}=上游
+        public const string RebaseConflictHint = "rebase.conflictHint"; // {0}=冲突文件数
+        public const string RebaseContinue = "rebase.continue";
+        public const string RebaseAbort = "rebase.abort";
         }
     }
 }

@@ -398,6 +398,19 @@ namespace KF.GitUI
                 if (!tagTexts.Contains("Checkout") || !tagTexts.Contains("Delete") || tagTexts.Contains("Rename…"))
                     throw new System.Exception("SMOKE FAIL: tag ctx");
 
+                // 28) M3 rebase 菜单（§6.2 插入点）：其它本地分支含 Rebase 组；上游子菜单含变基到上游；仍无重命名泄漏
+                var rebaseTexts = BranchesPanel.BuildContextActions(s, fake, "main", () => { }, _ => { })
+                    .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                if (!rebaseTexts.Any(t => t.StartsWith("Rebase current branch onto ft", StringComparison.Ordinal)))
+                    throw new System.Exception("SMOKE FAIL: rebase onto missing");
+                if (!rebaseTexts.Any(t => t.StartsWith("Checkout ft and rebase current branch onto it", StringComparison.Ordinal)))
+                    throw new System.Exception("SMOKE FAIL: rebase checkout missing");
+                if (!rebaseTexts.Any(t => t.StartsWith("Operations on origin/ft/", StringComparison.Ordinal)
+                                         && t.Contains("Rebase current branch onto origin/ft")))
+                    throw new System.Exception("SMOKE FAIL: upstream rebase missing");
+                if (rebaseTexts.Any(t => t.Contains("Rename") && t.StartsWith("Operations on", StringComparison.Ordinal)))
+                    throw new System.Exception("SMOKE FAIL: upstream submenu leaks Rename (rebase)");
+
                 // 20) 分支行文本标识（主分支 ★ / 当前分支 » / ↑↓；BMP 通用符号避免 emoji/Dingbats □）
                 if (BranchesPanel.FormatRefLabel("main", true, true, 0, 0) != "★ » main")
                     throw new System.Exception("SMOKE FAIL: label main+current");
@@ -717,6 +730,46 @@ namespace KF.GitUI
                     throw new System.Exception("SMOKE FAIL: compare window entries missing");
                 // OpenPair 立即返回后开后台 diff 线程——批处理下无窗口可开，但入口不应同步抛异常
                 // （Verify：分支面板接线处 OpenPair 调用编译通过即接线正确，此处入口反射已保证签名）
+
+                // 29) rebase 非交互式 e2e：冲突 rebase → status 首行 "## HEAD (no branch)" + UU → abort 恢复
+                var rbDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-rebase-repo");
+                DeleteDir(rbDir);
+                System.IO.Directory.CreateDirectory(rbDir);
+                var gitExe3 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe3, "init -b main", rbDir, out var rErr, out var _);
+                RunCli(gitExe3, "config user.name smoke", rbDir, out rErr, out var _);
+                RunCli(gitExe3, "config user.email smoke@local", rbDir, out rErr, out var _);
+                RunCli(gitExe3, "config commit.gpgsign false", rbDir, out rErr, out var _);
+                RunCli(gitExe3, "config core.autocrlf false", rbDir, out rErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(rbDir, "f.txt"), "a\nb\nc\n");
+                RunCli(gitExe3, "add f.txt", rbDir, out rErr, out var _);
+                RunCli(gitExe3, "commit -m base", rbDir, out rErr, out var _);
+                // 从 main 分出 topic，两边改同一行 → rebase 冲突
+                RunCli(gitExe3, "checkout -b topic", rbDir, out rErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(rbDir, "f.txt"), "a\nTOPIC\nc\n");
+                RunCli(gitExe3, "commit -am topic-change", rbDir, out rErr, out var _);
+                RunCli(gitExe3, "checkout main", rbDir, out rErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(rbDir, "f.txt"), "a\nMAIN\nc\n");
+                RunCli(gitExe3, "commit -am main-change", rbDir, out rErr, out var _);
+                using (var sr = GitSession.Open(rbDir))
+                {
+                    // 当前 main（干净）→ checkout topic → rebase main → 冲突
+                    sr.Checkout("topic");
+                    sr.Rebase("main");
+                    var rbStatus = sr.LoadStatus();
+                    if (rbStatus.Entries == null || !rbStatus.Entries.Any(e => e.Unmerged))
+                        throw new System.Exception("SMOKE FAIL: rebase conflict UU entries missing");
+                    if (!GitSession.AnalyzeRebaseState(rbStatus, out var inRebase, out var uuCount))
+                        throw new System.Exception("SMOKE FAIL: rebase state analysis (inRebase=false)");
+                    if (uuCount < 1)
+                        throw new System.Exception("SMOKE FAIL: rebase uu count");
+                    // abort 恢复原分支
+                    sr.RebaseAbort();
+                    var rbAfter = sr.LoadStatus();
+                    if (rbAfter.LocalBranch != "topic" || rbAfter.Entries.Count != 0)
+                        throw new System.Exception("SMOKE FAIL: rebase abort restore: lb=" + rbAfter.LocalBranch);
+                }
+                DeleteDir(rbDir);
             }
 
             EditorApplication.Exit(0);

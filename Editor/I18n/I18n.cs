@@ -120,6 +120,12 @@ namespace KF.GitUI
                 [Keys.CompareResultTitle] = "Differences with {0}",
                 [Keys.CompareNoChanges] = "(no differences)",
                 [Keys.CompareBack] = "Back",
+                [Keys.BranchCtxRebaseOnto] = "Rebase current branch onto {0}",
+                [Keys.BranchCtxCheckoutAndRebase] = "Checkout {0} and rebase current branch onto it",
+                [Keys.BranchCtxRebaseOntoUpstream] = "Rebase current branch onto {0}",
+                [Keys.RebaseConflictHint] = "Rebase conflict: {0} files need resolution (see 3-way view)",
+                [Keys.RebaseContinue] = "Continue Rebase",
+                [Keys.RebaseAbort] = "Abort Rebase",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>
