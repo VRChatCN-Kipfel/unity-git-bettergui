@@ -80,6 +80,10 @@ namespace KF.GitUI
         public const string MenuDiscardCount = "menu.discardCount"; // {0}=文件数
         public const string MenuOpen = "menu.open";
         public const string MenuCopyPath = "menu.copyPath";
+
+        // M3 P2 blame
+        public const string BlameTitle = "blame.title";
+        public const string MenuBlame = "menu.blame";
         public const string MenuCompareBranch = "menu.compareWithBranch";
         public const string MenuCreateTag = "menu.createTag";
         public const string CreateTagPrompt = "tag.prompt";

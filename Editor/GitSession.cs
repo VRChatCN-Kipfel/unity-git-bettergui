@@ -717,6 +717,17 @@ namespace KF.GitUI
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
+        /// <summary>blame 文件（git blame --porcelain；按行解析归属提交/作者/内容）。</summary>
+        public List<BlameLine> Blame(string path)
+        {
+            var task = new GitBlameTask(platform, path).Configure(platform.ProcessManager);
+            Prepare(task);
+            var output = task.RunSynchronously();
+            if (!task.Successful || output == null)
+                throw new InvalidOperationException("git blame failed: " + task.Errors);
+            return BlameParser.Parse(output);
+        }
+
         /// <summary>应用其它提交到当前分支（git cherry-pick &lt;hash&gt;；默认自动提交）。
         /// cherry-pick 冲突是预期结果不抛异常（冲突状态由 LoadConflictPaths 判定，3-way 视图处理）；真失败才抛。</summary>
         public void CherryPick(string commitHash)

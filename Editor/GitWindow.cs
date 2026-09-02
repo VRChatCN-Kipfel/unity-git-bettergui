@@ -1159,6 +1159,37 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: cherry-pick conflict UU missing");
                 }
                 DeleteDir(cpDir);
+
+                // 38) P2 blame（--porcelain 解析：归属提交/作者/内容 + 未提交行 0000 标记）
+                var blDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-blame-repo");
+                DeleteDir(blDir);
+                System.IO.Directory.CreateDirectory(blDir);
+                var gitExeC = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExeC, "init -b main", blDir, out var blErr, out var _);
+                RunCli(gitExeC, "config user.name smoke", blDir, out blErr, out var _);
+                RunCli(gitExeC, "config user.email smoke@local", blDir, out blErr, out var _);
+                RunCli(gitExeC, "config commit.gpgsign false", blDir, out blErr, out var _);
+                RunCli(gitExeC, "config core.autocrlf false", blDir, out blErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(blDir, "src.cs"), "line1\nline2\n");
+                RunCli(gitExeC, "add src.cs", blDir, out blErr, out var _);
+                RunCli(gitExeC, "commit -m first", blDir, out blErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(blDir, "src.cs"), "line1\nline2 EDITED\n");
+                using (var sbl = GitSession.Open(blDir))
+                {
+                    var blame = sbl.Blame("src.cs");
+                    if (blame.Count != 2)
+                        throw new System.Exception($"SMOKE FAIL: blame count={blame.Count} expect 2");
+                    // line1 = committed（smoke 提交）；line2 = uncommitted（工作区改动，0000…）
+                    if (blame[0].Content != "line1" || blame[0].LineNumber != 1
+                        || blame[0].Author != "smoke" || blame[0].Summary != "first"
+                        || blame[0].CommitShort.Length != 8)
+                        throw new System.Exception("SMOKE FAIL: blame committed line");
+                    if (blame[1].Content != "line2 EDITED" || blame[1].LineNumber != 2)
+                        throw new System.Exception("SMOKE FAIL: blame edited line content");
+                    if (blame[1].CommitShort != "00000000")
+                        throw new System.Exception($"SMOKE FAIL: blame uncommitted marker={blame[1].CommitShort}");
+                }
+                DeleteDir(blDir);
             }
 
             EditorApplication.Exit(0);
@@ -1456,6 +1487,13 @@ namespace KF.GitUI
                 () => OpenFile(session, item));
             yield return new DelegateAction("copy.path", I18n.L(I18n.Keys.MenuCopyPath),
                 () => GUIUtility.systemCopyBuffer = (item.OpsPath ?? item.Path));
+            // M3 P2：Blame（工作区文件；目录无意义）
+            if (!readOnly && !item.IsDirectory && session != null)
+            {
+                var blamePath = item.OpsPath ?? item.Path;
+                yield return new DelegateAction("blame", I18n.L(I18n.Keys.MenuBlame),
+                    () => BlameWindow.Open(session, blamePath));
+            }
         }
 
         private static void RunFlow(Action op, Action onMutated)

@@ -86,6 +86,8 @@ namespace KF.GitUI
                 [Keys.MenuDiscardCount] = "{0} files",
                 [Keys.MenuOpen] = "Open",
                 [Keys.MenuCopyPath] = "Copy Path",
+                [Keys.BlameTitle] = "Blame — {0}",
+                [Keys.MenuBlame] = "Blame",
                 [Keys.MenuCompareBranch] = "Compare with Branch…",
                 [Keys.MenuCreateTag] = "Create Tag…",
                 [Keys.CreateTagPrompt] = "Tag name:",
