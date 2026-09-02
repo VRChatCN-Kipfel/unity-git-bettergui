@@ -428,6 +428,120 @@ namespace KF.GitUI
                 // 4) UI 元素：GraphTable 数据接入
                 var headEntry = log[0];
                 UnityEngine.Debug.Log($"[gitui] SMOKE OK: layout={outer.childCount}/{inner.childCount} rows={log.Count} head={headEntry.ShortID} \"{headEntry.Summary}\" lanes=[{string.Join(",", lanes)}] eirTotal=6");
+
+                // 22) M3 数据层：unified diff 解析 + hunk 行配对 + 词级 LCS（纯数据，零 UI）
+                var parsedFiles = UnifiedDiffParser.Parse("diff --git a/a.txt b/a.txt\n"
+                    + "index 1111111..2222222 100644\n"
+                    + "--- a/a.txt\n"
+                    + "+++ b/a.txt\n"
+                    + "@@ -1,3 +1,3 @@\n"
+                    + " alpha\n"
+                    + "-beta OLD word\n"
+                    + "+beta NEW word\n"
+                    + " gamma\n"
+                    + "\\ No newline at end of file\n");
+                if (parsedFiles.Count != 1 || parsedFiles[0].OldPath != "a.txt" || parsedFiles[0].NewPath != "a.txt")
+                    throw new System.Exception("SMOKE FAIL: diff parser file header");
+                var pFile = parsedFiles[0];
+                if (pFile.Hunks.Count != 1)
+                    throw new System.Exception("SMOKE FAIL: diff parser hunk count");
+                var pHunk = pFile.Hunks[0];
+                if (pHunk.OldStart != 1 || pHunk.OldCount != 3 || pHunk.NewStart != 1 || pHunk.NewCount != 3)
+                    throw new System.Exception("SMOKE FAIL: diff parser hunk range");
+                if (pHunk.Lines.Count != 4)
+                    throw new System.Exception("SMOKE FAIL: diff parser line count");
+                if (pHunk.Lines[1].Kind != DiffLineKind.Old || pHunk.Lines[1].Content != "beta OLD word"
+                    || pHunk.Lines[1].LineNumber != 2)
+                    throw new System.Exception("SMOKE FAIL: diff parser old line");
+                if (pHunk.Lines[2].Kind != DiffLineKind.New || pHunk.Lines[2].Content != "beta NEW word"
+                    || pHunk.Lines[2].LineNumber != 2)
+                    throw new System.Exception("SMOKE FAIL: diff parser new line");
+                if (pHunk.Lines[0].LineNumber != 1)
+                    throw new System.Exception("SMOKE FAIL: diff parser context line numbers");
+                if (pHunk.Lines[3].LineNumber != -2)
+                    throw new System.Exception("SMOKE FAIL: diff parser no-newline marker");
+                // 新增/删除文件（/dev/null）
+                var parsedNew = UnifiedDiffParser.Parse("diff --git a/new.txt b/new.txt\n"
+                    + "new file mode 100644\n"
+                    + "index 0000000..3333333\n"
+                    + "--- /dev/null\n"
+                    + "+++ b/new.txt\n"
+                    + "@@ -0,0 +1 @@\n"
+                    + "+hello\n");
+                if (parsedNew.Count != 1 || !parsedNew[0].IsNew || parsedNew[0].NewPath != "new.txt")
+                    throw new System.Exception("SMOKE FAIL: diff parser new file");
+                var parsedDel = UnifiedDiffParser.Parse("diff --git a/gone.txt b/gone.txt\n"
+                    + "deleted file mode 100644\n"
+                    + "--- a/gone.txt\n"
+                    + "+++ /dev/null\n"
+                    + "@@ -1 +0,0 @@\n"
+                    + "-bye\n");
+                if (parsedDel.Count != 1 || !parsedDel[0].IsDeleted || parsedDel[0].OldPath != "gone.txt")
+                    throw new System.Exception("SMOKE FAIL: diff parser deleted file");
+
+                // 行配对：-/+ 按序对齐；纯删/纯增无对侧行
+                var pairs = HunkLinePairing.Pair(pHunk);
+                if (pairs.Count != 1 || !pairs[0].HasPair
+                    || pairs[0].Old.Content != "beta OLD word" || pairs[0].New.Content != "beta NEW word")
+                    throw new System.Exception("SMOKE FAIL: hunk pairing");
+                var onlyDel = UnifiedDiffParser.Parse("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +0,0 @@\n-gone\n")[0].Hunks[0];
+                var onlyDelPairs = HunkLinePairing.Pair(onlyDel);
+                if (onlyDelPairs.Count != 1 || onlyDelPairs[0].HasPair || onlyDelPairs[0].New != null)
+                    throw new System.Exception("SMOKE FAIL: pure delete pairing");
+
+                // 词级 LCS：英文词 + CJK 逐字符 + 标点归类
+                var wr = WordDiff.Compare("beta OLD word", "beta NEW word");
+                // "beta"/" "/"OLD"/" "/"word" 5 token → old 侧 5 片段（第 3 个=Deleted），new 侧 5 片段（第 3 个=Added）
+                if (wr == null || wr.OldFragments.Count != 5 || wr.NewFragments.Count != 5)
+                    throw new System.Exception("SMOKE FAIL: worddiff fragment count");
+                if (wr.OldFragments[2].Kind != DiffFragmentKind.Deleted
+                    || wr.OldFragments[2].OldLength != 3
+                    || wr.NewFragments[2].Kind != DiffFragmentKind.Added
+                    || wr.NewFragments[2].NewLength != 3)
+                    throw new System.Exception("SMOKE FAIL: worddiff mid fragment kinds");
+                // token 偏移：beta=0..4 空格=4..5 OLD=5..8 空格=8..9 word=9..13
+                if (wr.OldFragments[2].OldStart != 5 || wr.OldFragments[4].OldStart != 9)
+                    throw new System.Exception("SMOKE FAIL: worddiff offsets");
+                // CJK：逐字符（"中文"→"中英"：一个 unchanged + added '英'）
+                var wrCjk = WordDiff.Compare("中文", "中英");
+                if (wrCjk == null || wrCjk.NewFragments.Count != 2
+                    || wrCjk.OldFragments[0].Kind != DiffFragmentKind.Unchanged
+                    || wrCjk.OldFragments[0].OldLength != 1
+                    || wrCjk.NewFragments[1].Kind != DiffFragmentKind.Added
+                    || wrCjk.NewFragments[1].NewLength != 1)
+                    throw new System.Exception("SMOKE FAIL: worddiff CJK per-char");
+                // 行首空白归类：前导空格为独立 token（对齐决策文档 §1.5，行为可控）
+                var wrIndent = WordDiff.Compare("   a", "   b");
+                if (wrIndent == null
+                    || wrIndent.OldFragments[0].Kind != DiffFragmentKind.Unchanged
+                    || wrIndent.OldFragments[0].OldLength != 3
+                    || wrIndent.OldFragments[1].Kind != DiffFragmentKind.Deleted)
+                    throw new System.Exception("SMOKE FAIL: worddiff leading whitespace token");
+                // 空行对空行：全 unchanged，无崩溃
+                if (WordDiff.Compare("", "") == null
+                    || WordDiff.Compare("", "").OldFragments.Count != 0)
+                    throw new System.Exception("SMOKE FAIL: worddiff empty lines");
+                // 退化截断：>256 token 返回 null（调用方整行染色）——300 个空格分隔的单字符 token
+                var manyTokens = string.Join(" ", System.Linq.Enumerable.Repeat("a", 300));
+                if (WordDiff.Compare(manyTokens, manyTokens + " b") != null)
+                    throw new System.Exception("SMOKE FAIL: worddiff overflow degrade");
+                // BuildRichText：old 侧删除段 / new 侧新增段拼装
+                var wr2 = WordDiff.Compare("beta OLD word", "beta NEW word");
+                var rtOld = WordDiff.BuildRichText(wr2.OldFragments, "beta OLD word", true, "<D>", "</D>", "<A>", "</A>");
+                var rtNew = WordDiff.BuildRichText(wr2.NewFragments, "beta NEW word", false, "<D>", "</D>", "<A>", "</A>");
+                if (rtOld != "beta <D>OLD</D> word" || rtNew != "beta <A>NEW</A> word")
+                    throw new System.Exception($"SMOKE FAIL: worddiff richtext old={rtOld} new={rtNew}");
+
+                // 23) GitDiffTask 真仓通道（现成 9 提交冒烟仓）：HEAD~1 vs HEAD 解析
+                var liveTask = GitDiffTask.TwoRefs(s.Platform, "HEAD~1", "HEAD", 3)
+                    .Configure(s.Platform.ProcessManager);
+                var liveDiffOut = liveTask.RunSynchronously();
+                if (liveTask.Successful && !string.IsNullOrEmpty(liveDiffOut))
+                {
+                    var liveFiles = UnifiedDiffParser.Parse(liveDiffOut);
+                    if (liveFiles.Count < 1)
+                        throw new System.Exception("SMOKE FAIL: live diff parsed empty");
+                }
             }
 
             EditorApplication.Exit(0);
