@@ -24,6 +24,7 @@ namespace KF.GitUI
         public int OldLineNo = -1; // gutter 旧行号（Context/Old 有效）
         public int NewLineNo = -1; // gutter 新行号（Context/New 有效）
         public int HunkIndex = -1; // 所属 hunk 序号（HunkHeader 行标记自身，正文行标记所属）
+        public int FileIndex = -1; // 所属文件在 diff 输出中的序号（hunk 操作切片定位）
         public string FilePath = string.Empty; // 所属文件（FileHeader 行标记自身）
 
         public override string ToString() => $"[{Kind}] {RichText}";
@@ -60,19 +61,25 @@ namespace KF.GitUI
         {
             var rows = new List<DiffRow>();
             if (files == null) return rows;
-            foreach (var f in files)
-                BuildFile(f, rows, foldThreshold);
+            for (var i = 0; i < files.Count; i++)
+                BuildFile(files[i], rows, foldThreshold, i);
             return rows;
         }
 
         /// <summary>构建单个文件的行。</summary>
         public static void BuildFile(DiffFile f, List<DiffRow> rows)
         {
-            BuildFile(f, rows, DiffFold.MaxFileRows);
+            BuildFile(f, rows, DiffFold.MaxFileRows, -1);
         }
 
         /// <summary>构建单个文件的行，可指定折叠阈值。</summary>
         public static void BuildFile(DiffFile f, List<DiffRow> rows, int foldThreshold)
+        {
+            BuildFile(f, rows, foldThreshold, -1);
+        }
+
+        /// <summary>构建单个文件的行，可指定折叠阈值与文件序号（hunk 操作定位）。</summary>
+        public static void BuildFile(DiffFile f, List<DiffRow> rows, int foldThreshold, int fileIndex)
         {
             if (f == null) return;
 
@@ -86,7 +93,8 @@ namespace KF.GitUI
             {
                 Kind = DiffRowKind.FileHeader,
                 RichText = DiffRichText.BuildPlainLine(header),
-                FilePath = f.IsNew ? f.NewPath : f.OldPath
+                FilePath = f.IsNew ? f.NewPath : f.OldPath,
+                FileIndex = fileIndex
             });
 
             if (f.IsBinary)
@@ -109,7 +117,8 @@ namespace KF.GitUI
                     RichText = DiffRichText.BuildPlainLine(BuildHunkHeader(h)),
                     OldLineNo = h.OldStart,
                     NewLineNo = h.NewStart,
-                    HunkIndex = hunkIndex
+                    HunkIndex = hunkIndex,
+                    FileIndex = fileIndex
                 });
 
                 if (fold)
@@ -121,7 +130,8 @@ namespace KF.GitUI
                         Kind = DiffRowKind.Fold,
                         RichText = DiffRichText.BuildPlainLine(
                             $"[{h.Lines.Count - changes} ctx / {changes} changes — " + DiffFold.FoldLabel(h.Lines.Count) + "]"),
-                        HunkIndex = hunkIndex
+                        HunkIndex = hunkIndex,
+                        FileIndex = fileIndex
                     });
                     hunkIndex++;
                     continue;
@@ -144,7 +154,8 @@ namespace KF.GitUI
                                 RichText = DiffRichText.BuildPlainLine(line.Content),
                                 OldLineNo = line.LineNumber,
                                 NewLineNo = line.LineNumber,
-                                HunkIndex = hunkIndex
+                                HunkIndex = hunkIndex,
+                                FileIndex = fileIndex
                             });
                             break;
                         case DiffLineKind.Old:
@@ -164,7 +175,7 @@ namespace KF.GitUI
                             rows.Add(new DiffRow
                             {
                                 Kind = DiffRowKind.Old, RichText = rich,
-                                OldLineNo = line.LineNumber, HunkIndex = hunkIndex
+                                OldLineNo = line.LineNumber, HunkIndex = hunkIndex, FileIndex = fileIndex
                             });
                             break;
                         }
@@ -185,7 +196,7 @@ namespace KF.GitUI
                             rows.Add(new DiffRow
                             {
                                 Kind = DiffRowKind.New, RichText = rich,
-                                NewLineNo = line.LineNumber, HunkIndex = hunkIndex
+                                NewLineNo = line.LineNumber, HunkIndex = hunkIndex, FileIndex = fileIndex
                             });
                             break;
                         }

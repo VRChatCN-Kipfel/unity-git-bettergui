@@ -1228,6 +1228,33 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: dblclick new row: " + dbKinds);
                 }
                 DeleteDir(dblDir);
+
+                // 40) M3 hunk 操作 UI 接线：DiffViewer.BuildHunkActions（Stage/Revert）+ DiffRows.FileIndex
+                var hkDiff = "diff --git a/h.txt b/h.txt\n--- a/h.txt\n+++ b/h.txt\n"
+                    + "@@ -2,2 +2,2 @@\n  line1\n-old\n+new\n"
+                    + "@@ -7,1 +7,1 @@\n  line6\n-x\n+y\n";
+                var hkRows = DiffRows.Build(UnifiedDiffParser.Parse(hkDiff), 0);
+                // 第二文件文件头 FileIndex=1（多文件定位）
+                var hkDiff2 = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+A\n"
+                    + "diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-b\n+B\n";
+                var hkRows2 = DiffRows.Build(UnifiedDiffParser.Parse(hkDiff2), 0);
+                var bFileHeader = hkRows2.First(r => r.Kind == DiffRowKind.FileHeader
+                    && r.FilePath == "b.txt");
+                if (bFileHeader.FileIndex != 1)
+                    throw new System.Exception("SMOKE FAIL: fileIndex not assigned: " + bFileHeader.FileIndex);
+                // 菜单：session null → 空；非 null → Stage + Revert + 无 Unstage
+                var hkNull = DiffViewer.BuildHunkActions(null, "x", 0, 0, () => { }, _ => { }).ToList();
+                if (hkNull.Count != 0)
+                    throw new System.Exception("SMOKE FAIL: hunk actions null session");
+                var hkActs = DiffViewer.BuildHunkActions(s, hkDiff, 0, 0, () => { }, _ => { }).ToList();
+                var hkTexts = hkActs.Select(a => a.Text).ToList();
+                if (!hkTexts.Contains("Stage hunk") || !hkTexts.Contains("Revert hunk (discard changes)")
+                    || hkTexts.Contains("Unstage hunk"))
+                    throw new System.Exception("SMOKE FAIL: hunk menu items: " + string.Join(",", hkTexts));
+                // 行级 FileIndex：第二文件的 Old 行也应带 1
+                var bOldRow = hkRows2.FirstOrDefault(r => r.Kind == DiffRowKind.Old && r.FileIndex == 1);
+                if (bOldRow == null)
+                    throw new System.Exception("SMOKE FAIL: fileIndex on body rows missing");
             }
 
             EditorApplication.Exit(0);
@@ -1579,7 +1606,8 @@ namespace KF.GitUI
                     List<DiffRow> rows = new List<DiffRow>();
                     if (task.Successful && !string.IsNullOrEmpty(output))
                         rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
-                    ctx?.Post(_ => DiffViewer.Open(title, rows), null);
+                    // worktreeMode=true：hunk 级 Stage/Revert 可用
+                    ctx?.Post(_ => DiffViewer.Open(sessionCopy, title, output, rows, true), null);
                 }
                 catch (Exception ex)
                 {

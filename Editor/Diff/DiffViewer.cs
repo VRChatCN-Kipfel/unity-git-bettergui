@@ -12,21 +12,36 @@ namespace KF.GitUI
     ///   · 文件头/hunk 头 = 灰底粗体；上下文 = 等宽正常；Old = 浅红底；New = 浅绿底
     ///   · 行级背景之上叠加词级 rich text 高亮（DiffRichText 已注入标签）
     ///   · gutter 显示行号（旧/新）
-    ///   · 折叠长文件：DiffRows 构建时已把超限内容折叠（见 BuildOf 折叠参数）
-    /// 打开入口：DiffViewer.Open(session, title, files, rows) —— 由调用方先算好数据（后台线程），
-    /// 窗口只做同步渲染（避免窗口内跑 git 卡 UI；M2 CompareWindow 同步跑任务是被容忍的旧例，本视图从设计上规避）。
+    ///   · 折叠长文件：DiffRows 构建时已把超限内容折叠
+    /// M3 hunk 操作：worktreeMode（HEAD vs 工作区）下 Old/New 行右键 =
+    /// Stage / Revert 该 hunk（GitApplyTask；patch 切片经 GitPatchBuilder）。
+    /// 打开入口：由调用方先算好数据（后台线程）——窗口只做同步渲染。
     /// </summary>
     public sealed class DiffViewer : EditorWindow
     {
         private List<DiffRow> rows = new List<DiffRow>();
         private string windowTitle = string.Empty;
         private ScrollView scrollView;
+        private GitSession session;
+        private string diffOutput;
+        private bool worktreeMode;
 
+        /// <summary>纯查看（两 ref 比较 / 提交详情）：无 hunk 操作。</summary>
         public static void Open(string title, List<DiffRow> rows)
+        {
+            Open(null, title, null, rows, false);
+        }
+
+        /// <summary>工作区视图（HEAD vs 工作区）：支持 hunk 级 Stage/Revert。</summary>
+        public static void Open(GitSession session, string title, string diffOutput,
+            List<DiffRow> rows, bool worktreeMode)
         {
             var w = GetWindow<DiffViewer>(true, title);
             w.windowTitle = title;
             w.rows = rows ?? new List<DiffRow>();
+            w.session = session;
+            w.diffOutput = diffOutput;
+            w.worktreeMode = worktreeMode;
             w.Show();
         }
 
@@ -52,7 +67,62 @@ namespace KF.GitUI
             scrollView.Clear();
 
             foreach (var row in rows)
-                scrollView.Add(BuildRowElement(row));
+            {
+                var el = BuildRowElement(row);
+                // M3 hunk 操作：仅工作区视图 + 变更行（Old/New）可挂
+                if (worktreeMode && session != null
+                    && (row.Kind == DiffRowKind.Old || row.Kind == DiffRowKind.New))
+                {
+                    var fileIndex = row.FileIndex;
+                    var hunkIndex = row.HunkIndex;
+                    var sessionCopy = session;
+                    var diffCopy = diffOutput;
+                    GitContextMenu.Attach(el, () =>
+                        BuildHunkActions(sessionCopy, diffCopy, fileIndex, hunkIndex, RefreshData, ShowError));
+                }
+                scrollView.Add(el);
+            }
+        }
+
+        private void RefreshData()
+        {
+            try { EditorWindow.focusedWindow?.Repaint(); } catch { }
+        }
+
+        private static void ShowError(string msg)
+        {
+            Debug.LogWarning("[gitui] hunk op: " + msg);
+        }
+
+        /// <summary>hunk 级操作菜单（静态可测）：Stage / Revert 该 hunk。
+        /// 视图语义 = HEAD vs 工作区（未暂存改动）→ 无 Unstage（Unstage 属于 --cached 视图，待后续）。</summary>
+        public static IEnumerable<IGitContextAction> BuildHunkActions(GitSession session,
+            string diffOutput, int fileIndex, int hunkIndex, Action onMutated, Action<string> onError)
+        {
+            if (session == null) return new List<IGitContextAction>();
+
+            var actions = new List<IGitContextAction>
+            {
+                new DelegateAction("hunk.stage", I18n.L(I18n.Keys.DiffStageHunk),
+                    () => RunHunk(session, diffOutput, fileIndex, hunkIndex, GitApplyMode.Stage, onMutated, onError)),
+                new DelegateAction("hunk.revert", I18n.L(I18n.Keys.DiffRevertHunk),
+                    () => RunHunk(session, diffOutput, fileIndex, hunkIndex, GitApplyMode.Revert, onMutated, onError)),
+            };
+            return actions;
+        }
+
+        private static void RunHunk(GitSession session, string diffOutput, int fileIndex,
+            int hunkIndex, GitApplyMode mode, Action onMutated, Action<string> onError)
+        {
+            try
+            {
+                session.ApplyHunk(diffOutput, fileIndex, hunkIndex, mode);
+                onMutated?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                onError?.Invoke(ex.Message);
+            }
         }
 
         /// <summary>单行元素：gutter 行号 + 文本 Label。静态以便冒烟可构造断言（不依赖窗口实例）。</summary>

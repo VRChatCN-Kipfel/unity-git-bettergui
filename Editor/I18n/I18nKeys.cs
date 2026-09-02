@@ -84,6 +84,10 @@ namespace KF.GitUI
         // M3 P2 blame
         public const string BlameTitle = "blame.title";
         public const string MenuBlame = "menu.blame";
+
+        // M3 hunk 操作菜单
+        public const string DiffStageHunk = "diff.stageHunk";
+        public const string DiffRevertHunk = "diff.revertHunk";
         public const string MenuCompareBranch = "menu.compareWithBranch";
         public const string MenuCreateTag = "menu.createTag";
         public const string CreateTagPrompt = "tag.prompt";

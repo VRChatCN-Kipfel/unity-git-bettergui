@@ -88,6 +88,8 @@ namespace KF.GitUI
                 [Keys.MenuCopyPath] = "Copy Path",
                 [Keys.BlameTitle] = "Blame — {0}",
                 [Keys.MenuBlame] = "Blame",
+                [Keys.DiffStageHunk] = "Stage hunk",
+                [Keys.DiffRevertHunk] = "Revert hunk (discard changes)",
                 [Keys.MenuCompareBranch] = "Compare with Branch…",
                 [Keys.MenuCreateTag] = "Create Tag…",
                 [Keys.CreateTagPrompt] = "Tag name:",
