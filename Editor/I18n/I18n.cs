@@ -70,6 +70,10 @@ namespace KF.GitUI
                 [Keys.CommitRefresh] = "Refresh",
                 [Keys.CommitClean] = "Working tree clean",
                 [Keys.CommitGpgHint] = "GPG signing failed — check gpg-agent / private key, or disable signing.",
+                [Keys.CommitTemplates] = "Templates ▾",
+                [Keys.CommitRecentMessages] = "Recent messages",
+                [Keys.CommitUseTemplate] = "Use commit template",
+                [Keys.CommitNoTemplate] = "no commit.template configured",
                 // -- 文件/目录语境右键 --
                 [Keys.MenuStage] = "Stage",
                 [Keys.MenuUnstage] = "Unstage",

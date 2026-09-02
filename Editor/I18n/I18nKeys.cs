@@ -62,6 +62,12 @@ namespace KF.GitUI
         public const string CommitClean = "commit.clean";
         public const string CommitGpgHint = "commit.gpgHint";
 
+        // M3 P1 提交模板/最近消息
+        public const string CommitTemplates = "commit.templates";
+        public const string CommitRecentMessages = "commit.recentMessages";
+        public const string CommitUseTemplate = "commit.useTemplate";
+        public const string CommitNoTemplate = "commit.noTemplate";
+
         // -- 文件/目录语境右键 --
         public const string MenuStage = "menu.stage";
         public const string MenuUnstage = "menu.unstage";

@@ -612,6 +612,48 @@ namespace KF.GitUI
             catch { return false; }
         }
 
+        // ---- M3 P1 提交模板/最近消息 ----
+
+        /// <summary>最近提交消息（git log -N --pretty=format:%B，`\n\n` 分隔 summary/body；最多 N 条）。
+        /// 用 API 的 GitLogTask 拿 summary+description 拼接（%B 语义等价），避免新任务。</summary>
+        public List<string> RecentMessages(int count)
+        {
+            var result = new List<string>();
+            var log = LoadHistory(Math.Max(count, 1));
+            foreach (var e in log)
+            {
+                if (result.Count >= count) break;
+                var msg = e.Summary ?? string.Empty;
+                if (!string.IsNullOrEmpty(e.Description))
+                    msg += "\n\n" + e.Description;
+                if (msg.Length > 0 && !result.Contains(msg))
+                    result.Add(msg);
+            }
+            return result;
+        }
+
+        /// <summary>提交模板内容（git config --get commit.template → 读文件；未配置/读失败返回 null）。
+        /// 用公开的 GitConfigGetAllTask（GitConfigGetTask 是 api internal 不可实例化）。</summary>
+        public string LoadCommitTemplate()
+        {
+            try
+            {
+                var task = new GitConfigGetAllTask(platform, "commit.template", GitConfigSource.NonSpecified)
+                    .Configure(platform.ProcessManager);
+                Prepare(task);
+                var all = task.RunSynchronously();
+                if (!task.Successful || all == null || all.Count == 0)
+                    return null;
+                var path = all[0].Trim();
+                if (!System.IO.File.Exists(path)) return null;
+                return System.IO.File.ReadAllText(path);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         /// <summary>提取（git fetch --prune --tags [remote]；remote 空 = 全部远程）。</summary>
         public void Fetch(string remote)
         {

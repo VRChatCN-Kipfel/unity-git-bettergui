@@ -958,6 +958,45 @@ namespace KF.GitUI
                 }
                 DeleteDir(tgDir);
                 DeleteDir(tgBare);
+
+                // 34) P1 提交模板/最近消息（RecentMessages 去重 + LoadCommitTemplate 文件读取 + 未配置 null）
+                var tmDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-template-repo");
+                DeleteDir(tmDir);
+                System.IO.Directory.CreateDirectory(tmDir);
+                var gitExe8 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe8, "init -b main", tmDir, out var tpErr, out var _);
+                RunCli(gitExe8, "config user.name smoke", tmDir, out tpErr, out var _);
+                RunCli(gitExe8, "config user.email smoke@local", tmDir, out tpErr, out var _);
+                RunCli(gitExe8, "config commit.gpgsign false", tmDir, out tpErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(tmDir, "a.txt"), "a\n");
+                using (var stm = GitSession.Open(tmDir))
+                {
+                    // 无模板 → null
+                    if (stm.LoadCommitTemplate() != null)
+                        throw new System.Exception("SMOKE FAIL: template null default");
+                    // 两提交 → RecentMessages(5) 去重含两消息（summary+body 拼接）
+                    stm.Stage(new[] { "a.txt" });
+                    stm.Commit("first commit", "first body", false, false, false);
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(tmDir, "b.txt"), "b\n");
+                    stm.Stage(new[] { "b.txt" });
+                    stm.Commit("second commit", null, false, false, false);
+                    var recents = stm.RecentMessages(5);
+                    if (recents.Count != 2
+                        || !recents.Contains("first commit\n\nfirst body")
+                        || !recents.Contains("second commit"))
+                        throw new System.Exception("SMOKE FAIL: recent messages: " + string.Join("|", recents));
+                    // 配置 commit.template → LoadCommitTemplate 读文件内容
+                    var tmplPath = System.IO.Path.Combine(tmDir, "tmpl.txt");
+                    System.IO.File.WriteAllText(tmplPath, "template subject\n\ntemplate body\n");
+                    RunCli(gitExe8, "config commit.template " + tmplPath, tmDir, out tpErr, out var _);
+                    var tmpl = stm.LoadCommitTemplate();
+                    if (tmpl == null || !tmpl.Contains("template subject") || !tmpl.Contains("template body"))
+                        throw new System.Exception("SMOKE FAIL: template read");
+                    // Commit 页模板按钮存在（结构断言）
+                    if (I18n.L(I18n.Keys.CommitTemplates) != "Templates ▾")
+                        throw new System.Exception("SMOKE FAIL: template button label");
+                }
+                DeleteDir(tmDir);
             }
 
             EditorApplication.Exit(0);
@@ -985,6 +1024,65 @@ namespace KF.GitUI
         }
 
         // ---- Commit 页逻辑 ---- //
+
+        /// <summary>M3 P1：提交模板/最近消息下拉（GenericMenu：会话最近消息 → git log 最近 → commit.template 文件）。</summary>
+        private void ShowMessageTemplateMenu()
+        {
+            if (session == null || templateBtn == null) return;
+            var gm = new GenericMenu();
+            var filled = false;
+
+            // 最近消息：会话内提交优先，git log 兜底
+            var recents = new List<string>(sessionMessages);
+            try
+            {
+                foreach (var m in session.RecentMessages(5))
+                    if (!recents.Contains(m))
+                        recents.Add(m);
+            }
+            catch { }
+            if (recents.Count > 0)
+            {
+                gm.AddDisabledItem(new GUIContent(I18n.L(I18n.Keys.CommitRecentMessages)));
+                foreach (var m in recents)
+                {
+                    var msg = m;
+                    var label = msg.Replace("\n", " ").Trim();
+                    if (label.Length > 40) label = label.Substring(0, 40) + "…";
+                    gm.AddItem(new GUIContent(I18n.L(I18n.Keys.CommitRecentMessages) + "/" + label),
+                        false, () => ApplyTemplate(msg));
+                }
+                gm.AddSeparator("");
+            }
+
+            // 模板文件
+            string template = null;
+            try { template = session.LoadCommitTemplate(); }
+            catch { }
+            if (string.IsNullOrEmpty(template))
+            {
+                gm.AddDisabledItem(new GUIContent(I18n.L(I18n.Keys.CommitUseTemplate)
+                    + "  (" + I18n.L(I18n.Keys.CommitNoTemplate) + ")"));
+            }
+            else
+            {
+                gm.AddItem(new GUIContent(I18n.L(I18n.Keys.CommitUseTemplate)),
+                    false, () => ApplyTemplate(template));
+            }
+
+            var menuRect = new Rect(templateBtn.worldBound.position, templateBtn.worldBound.size);
+            gm.DropDown(menuRect);
+        }
+
+        /// <summary>把模板/最近消息填入 Commit 编辑器（summary/body 按首个空行切分；有值时仅替换非空部分？——直接整填）。</summary>
+        private void ApplyTemplate(string message)
+        {
+            if (msgSummary == null || msgBody == null) return;
+            var parts = message.Split(new[] { "\n\n" }, System.StringSplitOptions.None);
+            msgSummary.SetValueWithoutNotify(parts[0]);
+            msgBody.SetValueWithoutNotify(parts.Length > 1 ? parts[1] : "");
+            UpdateCommitButton();
+        }
 
         private void OnWorkingTreeToggle(ChangeItem item, bool staged)
         {
@@ -1093,6 +1191,10 @@ namespace KF.GitUI
                         // 成功：历史+refs 全量刷新（自动刷新 1.5s 也会兜底），工作区状态重载，清空消息
                         RefreshData();
                         RefreshWorkingStatus();
+                        // M3 P1：记录本会话成功提交的消息（模板下拉复用）
+                        var lastMsg = (msgSummary.value ?? "").Trim();
+                        if (lastMsg.Length > 0 && !sessionMessages.Contains(lastMsg))
+                            sessionMessages.Insert(0, lastMsg);
                         msgSummary.SetValueWithoutNotify("");
                         msgBody.SetValueWithoutNotify("");
                         SetCommitError("");
@@ -1665,6 +1767,9 @@ namespace KF.GitUI
         private const string PrefGraphFilter = "kf.gitui.graph.filter";
         private Button branchFilterBtn;
         private Button conflictBadge;
+        private Button templateBtn;
+        /// <summary>本会话内成功提交的消息（模板菜单「Recent messages」数据源之一；git log 兜底）。</summary>
+        private readonly List<string> sessionMessages = new List<string>();
         private string graphFilterRevision; // null = 全部分支；否则为 ref（本地名 / refs/remotes/… / refs/tags/…）
 
         private VisualElement BuildLayout()
@@ -1929,6 +2034,10 @@ namespace KF.GitUI
             opts.style.flexDirection = FlexDirection.Row;
             opts.style.paddingTop = 2;
             opts.style.paddingBottom = 2;
+            // M3 P1：模板/最近消息下拉
+            templateBtn = new Button(ShowMessageTemplateMenu) { text = I18n.L(I18n.Keys.CommitTemplates) };
+            templateBtn.style.marginRight = 8;
+            opts.Add(templateBtn);
             optAmend = new Toggle(I18n.L(I18n.Keys.CommitAmend));
             optSignoff = new Toggle(I18n.L(I18n.Keys.CommitSignoff));
             optNoVerify = new Toggle(I18n.L(I18n.Keys.CommitNoVerify));
