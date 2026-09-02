@@ -51,6 +51,8 @@ namespace KF.GitUI
                 [Keys.MenuResetHardWarn] = "DANGER: working tree changes will be discarded.",
                 [Keys.MenuRevert] = "Revert Commit…",
                 [Keys.MenuRevertConfirm] = "Revert commit {0}?\n\nThis creates a new commit that undoes it.",
+                [Keys.MenuUncommit] = "Uncommit…",
+                [Keys.MenuUncommitConfirm] = "Undo commit {0}?\n\nSoft-resets HEAD so the changes return to the staging area.",
                 [Keys.MenuCheckout] = "Checkout…",
                 [Keys.MenuCheckoutConfirm] = "Checkout {0}?\n\nThis detaches HEAD from the current branch.",
                 [Keys.DialogOk] = "OK",

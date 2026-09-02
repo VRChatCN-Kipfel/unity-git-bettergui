@@ -618,6 +618,30 @@ namespace KF.GitUI
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
+        /// <summary>
+        /// 撤销上一次提交（Uncommit，JetBrains GitUncommitAction 语义：仅 HEAD 提交）：
+        /// reset --soft HEAD^ 保留工作区与 index；返回被撤销提交的完整消息（供 Commit 编辑器回填）。
+        /// HEAD 无父（root 提交）时抛 InvalidOperationException。
+        /// api GitResetTask(Soft) 现成（M3-SOLUTION §1.2）。
+        /// </summary>
+        public string Uncommit()
+        {
+            var log = LoadHistory(2);
+            if (log.Count == 0)
+                throw new InvalidOperationException("Uncommit failed: no commits");
+            var head = log[0];
+            var parent = head.Parents.Count > 0 ? head.Parents[0] : null;
+            if (parent == null)
+                throw new InvalidOperationException("Uncommit failed: root commit has no parent");
+            RunOp("git reset --soft", new GitResetTask(platform, parent, GitResetMode.Soft)
+                .Configure(platform.ProcessManager));
+            // 完整消息（summary + body）回填 Commit 编辑器
+            var sb = new System.Text.StringBuilder(head.Summary ?? string.Empty);
+            if (!string.IsNullOrEmpty(head.Description))
+                sb.Append("\n\n").Append(head.Description);
+            return sb.ToString();
+        }
+
         // ---- M3 3-way 冲突数据 ----
 
         /// <summary>单冲突文件的三 stage blob 内容（:1:=base :2:=ours :3:=theirs；M3-SOLUTION §1.1-4）。</summary>
