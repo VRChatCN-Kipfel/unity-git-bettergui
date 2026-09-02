@@ -651,6 +651,39 @@ namespace KF.GitUI
                 new GitRemoteRemoveTask(platform, name).Configure(platform.ProcessManager));
         }
 
+        // ---- M3 P1 标签推送/远程标签 ----
+
+        /// <summary>推送标签到远程（git push &lt;remote&gt; refs/tags/&lt;tag&gt;）。</summary>
+        public void PushTag(string remote, string tag)
+        {
+            RunOp("git push tag",
+                new GitTagPushTask(platform, remote, tag).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>远程是否存在该标签（git ls-remote --tags &lt;remote&gt; refs/tags/&lt;tag&gt;）。</summary>
+        public bool RemoteTagExists(string remote, string tag)
+        {
+            var task = new GitDiffNameStatusTask(platform,
+                    "ls-remote --tags " + QuoteArg(remote) + " refs/tags/" + QuoteArg(tag))
+                .Configure(platform.ProcessManager);
+            Prepare(task);
+            var output = task.RunSynchronously();
+            if (!task.Successful || output == null) return false;
+            return output.IndexOf("refs/tags/" + tag, StringComparison.Ordinal) >= 0;
+        }
+
+        /// <summary>删除远程标签（git push &lt;remote&gt; --delete refs/tags/&lt;tag&gt;）。</summary>
+        public void DeleteRemoteTag(string remote, string tag)
+        {
+            RunOp("git push --delete tag",
+                new GitRemoteTagDeleteTask(platform, remote, tag).Configure(platform.ProcessManager));
+        }
+
+        private static string QuoteArg(string s)
+        {
+            return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        }
+
         /// <summary>
         /// 撤销上一次提交（Uncommit，JetBrains GitUncommitAction 语义：仅 HEAD 提交）：
         /// reset --soft HEAD^ 保留工作区与 index；返回被撤销提交的完整消息（供 Commit 编辑器回填）。

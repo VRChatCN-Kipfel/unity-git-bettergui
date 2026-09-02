@@ -148,6 +148,11 @@ namespace KF.GitUI
                 [Keys.RemoteAdded] = "Remote {0} added.",
                 [Keys.RemoteUpdated] = "Remote {0} URL updated.",
                 [Keys.RemoteRemoved] = "Remote {0} removed.",
+                [Keys.TagPush] = "Push tag to {0}",
+                [Keys.TagPushConfirm] = "Push tag {0} to remote {1}?",
+                [Keys.TagDeleteRemote] = "Delete tag on {0}",
+                [Keys.TagDeleteRemoteConfirm] = "Delete tag {0} on remote {1}?",
+                [Keys.TagNotOnRemote] = "Tag {0} does not exist on remote {1} (nothing to delete).",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

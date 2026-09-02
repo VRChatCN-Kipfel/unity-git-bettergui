@@ -263,6 +263,15 @@ namespace KF.GitUI
                 yield return GitContextSeparator.Instance;
                 yield return new DelegateAction("ctx.compare", I18n.L(I18n.Keys.BranchCtxCompareWith, cur),
                     () => CompareWindow.OpenPair(session, target.DisplayName + " vs " + cur, target.DisplayName, cur));
+                // M3 P1：推送标签到默认远程；存在则提示可删除
+                var defRemote = DefaultRemote(session);
+                if (!string.IsNullOrEmpty(defRemote))
+                {
+                    yield return new DelegateAction("ctx.tagPush", I18n.L(I18n.Keys.TagPush, defRemote),
+                        () => DoPushTag(session, target.DisplayName, defRemote, onChanged, onError));
+                    yield return new DelegateAction("ctx.tagDeleteRemote", I18n.L(I18n.Keys.TagDeleteRemote, defRemote),
+                        () => DoDeleteRemoteTag(session, target.DisplayName, defRemote, onChanged, onError));
+                }
                 yield return new DelegateAction("ctx.delete", I18n.L(I18n.Keys.BranchDelete),
                     () => DoDelete(session, target, onChanged, onError));
                 yield break;
@@ -435,6 +444,38 @@ namespace KF.GitUI
             {
                 session.Checkout(target);
                 session.Rebase(current);
+            }, onChanged, onError);
+        }
+
+        /// <summary>M3 P1：推送标签到远程（git push &lt;remote&gt; refs/tags/&lt;tag&gt;）。</summary>
+        private static void DoPushTag(GitSession session, string tag, string remote,
+            Action onChanged, Action<string> onError)
+        {
+            if (session == null) return;
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.TagPush, remote),
+                    I18n.L(I18n.Keys.TagPushConfirm, tag, remote),
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            RunOp(session, () => session.PushTag(remote, tag), onChanged, onError);
+        }
+
+        /// <summary>M3 P1：删除远程标签（先确认存在；push --delete refs/tags/&lt;tag&gt;）。</summary>
+        private static void DoDeleteRemoteTag(GitSession session, string tag, string remote,
+            Action onChanged, Action<string> onError)
+        {
+            if (session == null) return;
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.TagDeleteRemote, remote),
+                    I18n.L(I18n.Keys.TagDeleteRemoteConfirm, tag, remote),
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            RunOp(session, () =>
+            {
+                if (!session.RemoteTagExists(remote, tag))
+                {
+                    onError?.Invoke(I18n.L(I18n.Keys.TagNotOnRemote, tag, remote));
+                    return;
+                }
+                session.DeleteRemoteTag(remote, tag);
             }, onChanged, onError);
         }
 

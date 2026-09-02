@@ -148,6 +148,13 @@ namespace KF.GitUI
         public const string RemoteAdded = "remote.added"; // {0}=remote 名
         public const string RemoteUpdated = "remote.updated"; // {0}=remote 名
         public const string RemoteRemoved = "remote.removed"; // {0}=remote 名
+
+        // M3 P1 标签推送/远程标签
+        public const string TagPush = "tag.push"; // {0}=remote
+        public const string TagPushConfirm = "tag.pushConfirm"; // {0}=标签 {1}=remote
+        public const string TagDeleteRemote = "tag.deleteRemote"; // {0}=remote
+        public const string TagDeleteRemoteConfirm = "tag.deleteRemoteConfirm"; // {0}=标签 {1}=remote
+        public const string TagNotOnRemote = "tag.notOnRemote"; // {0}=标签 {1}=remote
         }
     }
 }

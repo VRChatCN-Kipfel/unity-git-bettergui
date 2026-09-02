@@ -915,6 +915,49 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: remote manager entry missing");
                 }
                 DeleteDir(rmDir);
+
+                // 33) P1 标签推送/远程标签（本地裸远端 e2e：PushTag → RemoteTagExists → DeleteRemoteTag）
+                var tgDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-tagpush-repo");
+                var tgBare = tgDir + ".git";
+                DeleteDir(tgDir);
+                DeleteDir(tgBare);
+                System.IO.Directory.CreateDirectory(tgDir);
+                var gitExe7 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe7, "init -b main", tgDir, out var tErr, out var _);
+                RunCli(gitExe7, "config user.name smoke", tgDir, out tErr, out var _);
+                RunCli(gitExe7, "config user.email smoke@local", tgDir, out tErr, out var _);
+                RunCli(gitExe7, "config commit.gpgsign false", tgDir, out tErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(tgDir, "t.txt"), "tag me\n");
+                RunCli(gitExe7, "add t.txt", tgDir, out tErr, out var _);
+                RunCli(gitExe7, "commit -m base", tgDir, out tErr, out var _);
+                System.IO.Directory.CreateDirectory(tgBare); // cwd 须存在
+                RunCli(gitExe7, "init --bare", tgBare, out tErr, out var _);
+                if (!string.IsNullOrEmpty(tErr))
+                    throw new System.Exception("SMOKE FAIL: tagpush bare init: " + tErr);
+                using (var stg = GitSession.Open(tgDir))
+                {
+                    stg.RemoteAdd("origin", tgBare);
+                    stg.Push("origin", "main", true);
+                    var tgHead = stg.LoadHistory(1);
+                    if (tgHead.Count != 1)
+                        throw new System.Exception("SMOKE FAIL: tagpush head");
+                    stg.CreateTag("v1", tgHead[0].CommitID, "release v1");
+                    stg.PushTag("origin", "v1");
+                    if (!stg.RemoteTagExists("origin", "v1"))
+                        throw new System.Exception("SMOKE FAIL: tag push not on remote");
+                    stg.DeleteRemoteTag("origin", "v1");
+                    if (stg.RemoteTagExists("origin", "v1"))
+                        throw new System.Exception("SMOKE FAIL: tag delete still on remote");
+                    // 标签菜单项（fake tag + 远程存在 → Push/DeleteRemote 出现）
+                    var tgRef = new GitSession.GitRefInfo { Type = GitSession.RefType.Tag, DisplayName = "v1", CommitId = "x" };
+                    var tgTexts = BranchesPanel.BuildContextActions(stg, tgRef, "main", () => { }, _ => { })
+                        .Where(a => a.Text != null).Select(a => a.Text).ToList();
+                    if (!tgTexts.Any(t => t.StartsWith("Push tag to origin", StringComparison.Ordinal))
+                        || !tgTexts.Any(t => t.StartsWith("Delete tag on origin", StringComparison.Ordinal)))
+                        throw new System.Exception("SMOKE FAIL: tag push/delete menu missing");
+                }
+                DeleteDir(tgDir);
+                DeleteDir(tgBare);
             }
 
             EditorApplication.Exit(0);
