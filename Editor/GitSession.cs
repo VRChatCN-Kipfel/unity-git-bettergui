@@ -618,6 +618,39 @@ namespace KF.GitUI
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
+        // ---- M3 P1 remote 管理（api 四任务现成；入口 = BranchesPanel 空白右键「管理 Remotes…」） ----
+
+        /// <summary>列出 remote 定义（git remote -v → GitRemote{name,url,function}）。</summary>
+        public List<GitRemote> LoadRemotes()
+        {
+            var task = new GitRemoteListTask(platform).Configure(platform.ProcessManager);
+            Prepare(task);
+            var result = task.RunSynchronously();
+            if (!task.Successful || result == null)
+                throw new InvalidOperationException("git remote list failed: " + task.Errors);
+            return result;
+        }
+
+        /// <summary>新建 remote（git remote add &lt;name&gt; &lt;url&gt;）。</summary>
+        public void RemoteAdd(string name, string url)
+        {
+            RunOp("git remote add", new GitRemoteAddTask(platform, name, url).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>修改 remote URL（git remote set-url &lt;name&gt; &lt;url&gt;）。</summary>
+        public void RemoteSetUrl(string name, string url)
+        {
+            RunOp("git remote set-url",
+                new GitRemoteChangeTask(platform, name, url).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>删除 remote（git remote rm &lt;name&gt;）。</summary>
+        public void RemoteRemove(string name)
+        {
+            RunOp("git remote rm",
+                new GitRemoteRemoveTask(platform, name).Configure(platform.ProcessManager));
+        }
+
         /// <summary>
         /// 撤销上一次提交（Uncommit，JetBrains GitUncommitAction 语义：仅 HEAD 提交）：
         /// reset --soft HEAD^ 保留工作区与 index；返回被撤销提交的完整消息（供 Commit 编辑器回填）。

@@ -135,6 +135,19 @@ namespace KF.GitUI
         public const string Merge3AcceptTheirs = "merge3.acceptTheirs";
         public const string Merge3RebaseSwapNote = "merge3.rebaseSwapNote";
         public const string Merge3AllResolved = "merge3.allResolved";
+
+        // M3 P1 remote 管理
+        public const string RemoteManageTitle = "remote.manageTitle";
+        public const string RemoteName = "remote.name";
+        public const string RemoteUrl = "remote.url";
+        public const string RemoteAdd = "remote.add";
+        public const string RemoteEditUrl = "remote.editUrl";
+        public const string RemoteRemove = "remote.remove";
+        public const string RemoteRemoveConfirm = "remote.removeConfirm"; // {0}=remote 名
+        public const string RemoteNameUrlRequired = "remote.nameUrlRequired";
+        public const string RemoteAdded = "remote.added"; // {0}=remote 名
+        public const string RemoteUpdated = "remote.updated"; // {0}=remote 名
+        public const string RemoteRemoved = "remote.removed"; // {0}=remote 名
         }
     }
 }

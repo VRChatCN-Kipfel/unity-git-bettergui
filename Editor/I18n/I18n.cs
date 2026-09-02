@@ -137,6 +137,17 @@ namespace KF.GitUI
                 [Keys.Merge3AcceptTheirs] = "Accept Theirs",
                 [Keys.Merge3RebaseSwapNote] = "[rebase: Yours/Theirs swapped per git semantics]",
                 [Keys.Merge3AllResolved] = "All conflicts resolved — commit (merge) or continue (rebase)",
+                [Keys.RemoteManageTitle] = "Manage Remotes",
+                [Keys.RemoteName] = "Name",
+                [Keys.RemoteUrl] = "URL",
+                [Keys.RemoteAdd] = "Add / Update",
+                [Keys.RemoteEditUrl] = "Edit URL",
+                [Keys.RemoteRemove] = "Remove",
+                [Keys.RemoteRemoveConfirm] = "Remove remote {0}?\n\nThis only removes the remote definition; local branches are unaffected.",
+                [Keys.RemoteNameUrlRequired] = "Name and URL are required.",
+                [Keys.RemoteAdded] = "Remote {0} added.",
+                [Keys.RemoteUpdated] = "Remote {0} URL updated.",
+                [Keys.RemoteRemoved] = "Remote {0} removed.",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

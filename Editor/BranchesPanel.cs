@@ -332,7 +332,7 @@ namespace KF.GitUI
                     () => DoDelete(session, target, onChanged, onError));
         }
 
-        /// <summary>空白处右键：新建分支/标签（替代被删除的底部输入栏）。</summary>
+        /// <summary>空白处右键：新建分支/标签 + M3 管理 remote（替代被删除的底部输入栏）。</summary>
         private IEnumerable<IGitContextAction> BuildBlankActions()
         {
             if (session == null) yield break;
@@ -341,6 +341,9 @@ namespace KF.GitUI
                 () => PromptNewBranchFrom(session, cur, onChanged, ShowError));
             yield return new DelegateAction("blank.newtag", I18n.L(I18n.Keys.MenuCreateTag),
                 () => PromptNewTag(session, onChanged, ShowError));
+            yield return GitContextSeparator.Instance;
+            yield return new DelegateAction("blank.remotes", I18n.L(I18n.Keys.RemoteManageTitle),
+                () => RemoteManagerWindow.Open(session));
         }
 
         private void ShowError(string msg) => errorLabel.text = msg ?? string.Empty;

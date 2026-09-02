@@ -875,6 +875,46 @@ namespace KF.GitUI
                     //（回填 lambda 本身已在编译期接线；真正回填在交互式 Unity 中由 ConfirmUncommit→onUncommittedMessage 触发）
                 }
                 DeleteDir(unDir);
+
+                // 32) P1 remote 管理（api 四任务：add/set-url/list/remove）+ 空白右键入口
+                var rmDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-remote-repo");
+                DeleteDir(rmDir);
+                System.IO.Directory.CreateDirectory(rmDir);
+                var gitExe6 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe6, "init -b main", rmDir, out var rpErr, out var _);
+                RunCli(gitExe6, "config user.name smoke", rmDir, out rpErr, out var _);
+                RunCli(gitExe6, "config user.email smoke@local", rmDir, out rpErr, out var _);
+                RunCli(gitExe6, "config commit.gpgsign false", rmDir, out rpErr, out var _);
+                using (var sp = GitSession.Open(rmDir))
+                {
+                    // 初始无 remote
+                    var remotes0 = sp.LoadRemotes();
+                    if (remotes0.Count != 0)
+                        throw new System.Exception("SMOKE FAIL: remote list initial not empty");
+                    // add
+                    sp.RemoteAdd("origin", "https://example.com/repo.git");
+                    var remotes1 = sp.LoadRemotes();
+                    if (remotes1.Count != 1 || remotes1[0].Name != "origin"
+                        || !remotes1[0].Url.Contains("example.com"))
+                        throw new System.Exception("SMOKE FAIL: remote add");
+                    // set-url
+                    sp.RemoteSetUrl("origin", "https://example.com/renamed.git");
+                    var remotes2 = sp.LoadRemotes();
+                    if (remotes2.Count != 1 || !remotes2[0].Url.Contains("renamed"))
+                        throw new System.Exception("SMOKE FAIL: remote set-url");
+                    // remove
+                    sp.RemoteRemove("origin");
+                    var remotes3 = sp.LoadRemotes();
+                    if (remotes3.Count != 0)
+                        throw new System.Exception("SMOKE FAIL: remote remove");
+                    // 窗口入口（静态反射：Open 存在）
+                    var rmOpen = typeof(RemoteManagerWindow).GetMethod("Open",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                        null, new[] { typeof(GitSession) }, null);
+                    if (rmOpen == null)
+                        throw new System.Exception("SMOKE FAIL: remote manager entry missing");
+                }
+                DeleteDir(rmDir);
             }
 
             EditorApplication.Exit(0);
