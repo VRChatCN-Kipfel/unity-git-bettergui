@@ -318,7 +318,7 @@ namespace KF.GitUI
         /// <summary>ref 类型（排序组）。</summary>
         public enum RefType { Head, Local, Remote, Tag }
 
-        /// <summary>一条 ref 标签（显示名 + 目标提交 + 可选跟踪上游）。</summary>
+        /// <summary>一条 ref 标签（显示名 + 目标提交 + 可选跟踪上游 + 分支级 ahead/behind）。</summary>
         public sealed class GitRefInfo
         {
             public RefType Type;
@@ -327,6 +327,10 @@ namespace KF.GitUI
             public bool IsCurrentHead;
             /// <summary>本地分支跟踪的远程分支（如 "origin/main"）；远程/标签/未跟踪为 null。</summary>
             public string Upstream;
+            /// <summary>相对上游领先提交数（%(upstream:track) 解析；无上游/未跟踪为 0）。</summary>
+            public int Ahead;
+            /// <summary>相对上游落后提交数（同上）。</summary>
+            public int Behind;
         }
 
         private List<GitRefInfo> refsCache; // refs 可变：会话级缓存，后续由 RepositoryWatcher 失效
@@ -354,6 +358,8 @@ namespace KF.GitUI
                     var isHead = parts.Length > 2 && parts[2].Trim() == "*";
                     var upstream = parts.Length > 3 ? parts[3].Trim() : null;
                     if (string.IsNullOrEmpty(upstream)) upstream = null;
+                    // 第 5 列 = %(upstream:track)："[ahead N, behind M]" / "[gone]" / 空=同步
+                    var (ahead, behind) = ParseUpstreamTrack(parts.Length > 4 ? parts[4] : null);
 
                     GitRefInfo info;
                     if (refName.StartsWith("refs/remotes/", StringComparison.Ordinal))
@@ -361,7 +367,7 @@ namespace KF.GitUI
                     else if (refName.StartsWith("refs/tags/", StringComparison.Ordinal))
                         info = new GitRefInfo { Type = RefType.Tag, DisplayName = refName.Substring("refs/tags/".Length), CommitId = commit };
                     else if (refName.StartsWith("refs/heads/", StringComparison.Ordinal))
-                        info = new GitRefInfo { Type = isHead ? RefType.Head : RefType.Local, DisplayName = refName.Substring("refs/heads/".Length), CommitId = commit, IsCurrentHead = isHead, Upstream = upstream };
+                        info = new GitRefInfo { Type = isHead ? RefType.Head : RefType.Local, DisplayName = refName.Substring("refs/heads/".Length), CommitId = commit, IsCurrentHead = isHead, Upstream = upstream, Ahead = ahead, Behind = behind };
                     else
                         continue;
                     result.Add(info);
@@ -376,6 +382,25 @@ namespace KF.GitUI
 
             lock (cacheLock) refsCache = result;
             return result;
+        }
+
+        /// <summary>解析 %(upstream:track) 列："[ahead N, behind M]" / "[ahead N]" / "[behind M]" / "[gone]" / 空。</summary>
+        public static (int ahead, int behind) ParseUpstreamTrack(string track)
+        {
+            var ahead = 0;
+            var behind = 0;
+            if (string.IsNullOrEmpty(track)) return (0, 0);
+            var inner = track.Trim().Trim('[', ']');
+            if (inner.Length == 0 || inner == "gone") return (0, 0);
+            foreach (var part in inner.Split(','))
+            {
+                var p = part.Trim();
+                if (p.StartsWith("ahead", StringComparison.Ordinal))
+                    int.TryParse(p.Substring(5).Trim(), out ahead);
+                else if (p.StartsWith("behind", StringComparison.Ordinal))
+                    int.TryParse(p.Substring(6).Trim(), out behind);
+            }
+            return (ahead, behind);
         }
 
         private static int GroupOrder(RefType t)

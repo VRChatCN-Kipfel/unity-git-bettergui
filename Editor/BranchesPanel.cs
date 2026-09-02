@@ -144,11 +144,12 @@ namespace KF.GitUI
 
         private string DisplayText(GitSession.GitRefInfo r)
         {
-            return FormatRefLabel(r.DisplayName, IsMainBranch(r), IsCurrentBranch(r), currentAhead, currentBehind);
+            // M3 P2：分支级 ahead/behind（每分支自己的 ;%(upstream:track) 数据，单进程）
+            return FormatRefLabel(r.DisplayName, IsMainBranch(r), IsCurrentBranch(r), r.Ahead, r.Behind);
         }
 
         /// <summary>
-        /// 行文本（JetBrains 直觉）：主分支（main/master）左侧 ★；当前签出分支名前 »；当前分支带 ↑↓。
+        /// 行文本（JetBrains 直觉）：主分支（main/master）左侧 ★；当前签出分支名前 »；跟踪分支带 ↑↓（分支级 ahead/behind）。
         /// 用最基础的 BMP 通用符号（Unity 默认字体缺 emoji 与部分 Dingbats 字形，U+2B50/U+1F3F7/U+276F 会渲染成 □）。
         /// 静态可测。
         /// </summary>
@@ -158,7 +159,8 @@ namespace KF.GitUI
             if (isMain) sb.Append("★ ");
             if (isCurrent) sb.Append("» ");
             sb.Append(name);
-            if (isCurrent && (ahead > 0 || behind > 0))
+            // 任何有上游差距的分支都显示徽标（当前分支与其它本地分支一视同仁）
+            if (ahead > 0 || behind > 0)
                 sb.Append(string.Format("  ↑{0} ↓{1}", ahead, behind));
             return sb.ToString();
         }

@@ -411,13 +411,16 @@ namespace KF.GitUI
                 if (rebaseTexts.Any(t => t.Contains("Rename") && t.StartsWith("Operations on", StringComparison.Ordinal)))
                     throw new System.Exception("SMOKE FAIL: upstream submenu leaks Rename (rebase)");
 
-                // 20) 分支行文本标识（主分支 ★ / 当前分支 » / ↑↓；BMP 通用符号避免 emoji/Dingbats □）
+                // 20) 分支行文本标识（主分支 ★ / 当前分支 » / 分支级 ↑↓；BMP 通用符号避免 emoji/Dingbats □）
                 if (BranchesPanel.FormatRefLabel("main", true, true, 0, 0) != "★ » main")
                     throw new System.Exception("SMOKE FAIL: label main+current");
                 if (BranchesPanel.FormatRefLabel("main", true, false, 0, 0) != "★ main")
                     throw new System.Exception("SMOKE FAIL: label main");
-                if (BranchesPanel.FormatRefLabel("feature/x", false, false, 2, 1) != "feature/x")
-                    throw new System.Exception("SMOKE FAIL: label plain");
+                // M3 P2：任何跟踪分支都显示 ↑↓（不再限定当前分支）
+                if (BranchesPanel.FormatRefLabel("feature/x", false, false, 2, 1) != "feature/x  ↑2 ↓1")
+                    throw new System.Exception("SMOKE FAIL: label non-current ahead");
+                if (BranchesPanel.FormatRefLabel("feature/x", false, false, 0, 0) != "feature/x")
+                    throw new System.Exception("SMOKE FAIL: label sync no badge");
                 if (BranchesPanel.FormatRefLabel("feature/x", false, true, 2, 0) != "» feature/x  ↑2 ↓0")
                     throw new System.Exception("SMOKE FAIL: label current+ahead");
 
@@ -997,6 +1000,76 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: template button label");
                 }
                 DeleteDir(tmDir);
+
+                // 35) P2 分支级 ahead/behind（ParseUpstreamTrack + for-each-ref 第5列 e2e）
+                var ab0 = GitSession.ParseUpstreamTrack("[ahead 3, behind 2]");
+                if (ab0.ahead != 3 || ab0.behind != 2)
+                    throw new System.Exception("SMOKE FAIL: track both");
+                var ab1 = GitSession.ParseUpstreamTrack("[ahead 5]");
+                if (ab1.ahead != 5 || ab1.behind != 0)
+                    throw new System.Exception("SMOKE FAIL: track ahead only");
+                var ab2 = GitSession.ParseUpstreamTrack("[behind 4]");
+                if (ab2.ahead != 0 || ab2.behind != 4)
+                    throw new System.Exception("SMOKE FAIL: track behind only");
+                if (GitSession.ParseUpstreamTrack("") != (0, 0)
+                    || GitSession.ParseUpstreamTrack("[gone]") != (0, 0))
+                    throw new System.Exception("SMOKE FAIL: track empty/gone");
+                // e2e：main 与 topic 各设 upstream 到 origin（topic 领先 1）
+                var abDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-aheadbehind-repo");
+                var abBare = abDir + ".git";
+                DeleteDir(abDir);
+                DeleteDir(abBare);
+                System.IO.Directory.CreateDirectory(abDir);
+                var gitExe9 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe9, "init -b main", abDir, out var abErr, out var _);
+                RunCli(gitExe9, "config user.name smoke", abDir, out abErr, out var _);
+                RunCli(gitExe9, "config user.email smoke@local", abDir, out abErr, out var _);
+                RunCli(gitExe9, "config commit.gpgsign false", abDir, out abErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(abDir, "m.txt"), "m\n");
+                RunCli(gitExe9, "add m.txt", abDir, out abErr, out var _);
+                RunCli(gitExe9, "commit -m base", abDir, out abErr, out var _);
+                System.IO.Directory.CreateDirectory(abBare);
+                RunCli(gitExe9, "init --bare", abBare, out abErr, out var _);
+                using (var sab = GitSession.Open(abDir))
+                {
+                    sab.RemoteAdd("origin", abBare);
+                    sab.Push("origin", "main", true);
+                    // topic 基于 main 后领先 1
+                    sab.NewBranch("topic", "main");
+                    sab.Checkout("topic"); // NewBranch 只建不切（GitBranchCreateTask 语义）
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(abDir, "t.txt"), "t\n");
+                    sab.Stage(new[] { "t.txt" });
+                    sab.Commit("topic change", null, false, false, false);
+                    sab.Push("origin", "topic", true);
+                    // push 后本地产 origin/topic（同点）；再提交 1 个 → 本地领先 1（ahead=1, behind=0）
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(abDir, "t2.txt"), "t2\n");
+                    sab.Stage(new[] { "t2.txt" });
+                    sab.Commit("one more", null, false, false, false);
+                    sab.Fetch("origin");
+                    sab.InvalidateRefs(); // refs 缓存失效重载
+                    // debug：原始 for-each-ref 输出（对比 api 解析）；topic 应 [ahead 1]
+                    RunCli(gitExe9,
+                        "for-each-ref --format=%(refname)%09%(objectname)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)",
+                        abDir, out var ferErr, out var ferOut);
+                    var ferTopic = ferOut.Split('\n').FirstOrDefault(l => l.Contains("refs/heads/topic"));
+                    if (ferTopic == null || !ferTopic.Contains("[ahead 1]") || ferTopic.Contains("[behind"))
+                        throw new System.Exception("SMOKE FAIL: raw for-each-ref topic: " + ferOut);
+                    var refsAb = sab.LoadRefs();
+                    var mainRef = refsAb.FirstOrDefault(r => r.DisplayName == "main");
+                    var topicRef = refsAb.FirstOrDefault(r => r.DisplayName == "topic");
+                    if (mainRef == null || topicRef == null)
+                        throw new System.Exception("SMOKE FAIL: aheadbehind refs missing");
+                    if (topicRef.Ahead != 1 || topicRef.Behind != 0)
+                        throw new System.Exception($"SMOKE FAIL: topic badge ahead={topicRef.Ahead}/behind={topicRef.Behind} expect 1/0");
+                    if (mainRef.Ahead != 0 || mainRef.Behind != 0)
+                        throw new System.Exception($"SMOKE FAIL: main badge ahead={mainRef.Ahead}/behind={mainRef.Behind} expect sync");
+                    // DisplayText 集成（FormatRefLabel 已测；此处验证 refs 驱动）
+                    if (BranchesPanel.FormatRefLabel(topicRef.DisplayName, false, false, topicRef.Ahead, topicRef.Behind)
+                        != "topic  ↑1 ↓0")
+                        throw new System.Exception("SMOKE FAIL: topic label badge");
+                }
+                DeleteDir(abDir);
+                DeleteDir(abBare);
             }
 
             EditorApplication.Exit(0);
