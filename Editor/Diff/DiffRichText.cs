@@ -77,5 +77,19 @@ namespace KF.GitUI
         {
             return Escape(text);
         }
+
+        /// <summary>整行删除染色（无配对行或词级退化时使用）：全段红底+删除线。</summary>
+        public static string WrapDeleted(string text)
+        {
+            return "<mark=" + DeletedBackground + "><s><color=" + DeletedForeground + ">" + Escape(text)
+                   + "</color></s></mark>";
+        }
+
+        /// <summary>整行新增染色（无配对行或词级退化时使用）：全段绿底+深绿前景。</summary>
+        public static string WrapAdded(string text)
+        {
+            return "<mark=" + AddedBackground + "><color=" + AddedForeground + ">" + Escape(text)
+                   + "</color></mark>";
+        }
     }
 }

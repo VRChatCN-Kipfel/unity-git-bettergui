@@ -558,6 +558,60 @@ namespace KF.GitUI
                     throw new System.Exception($"SMOKE FAIL: richtext exact del={rtDel} add={rtAdd}");
                 if (DiffRichText.BuildPlainLine("plain <text>") != "plain &lt;text&gt;")
                     throw new System.Exception("SMOKE FAIL: richtext plain line");
+
+                // 25) DiffRows：unified 行模型（头/hunk/行类/词级/整行染色/折叠）
+                var rdParsed = UnifiedDiffParser.Parse("diff --git a/a.txt b/a.txt\n"
+                    + "index 1111111..2222222 100644\n"
+                    + "--- a/a.txt\n"
+                    + "+++ b/a.txt\n"
+                    + "@@ -1,3 +1,3 @@\n"
+                    + " alpha\n"
+                    + "-beta OLD word\n"
+                    + "+beta NEW word\n"
+                    + " gamma\n");
+                var rdRows = DiffRows.Build(rdParsed, 0);
+                // 头 + hunk 头 + 4 正文行 = 6
+                if (rdRows.Count != 6)
+                    throw new System.Exception($"SMOKE FAIL: diffrows count={rdRows.Count} expect 6");
+                if (rdRows[0].Kind != DiffRowKind.FileHeader
+                    || !rdRows[0].RichText.Contains("a/a.txt")
+                    || rdRows[1].Kind != DiffRowKind.HunkHeader
+                    || !rdRows[1].RichText.Contains("@@ -1,3 +1,3 @@"))
+                    throw new System.Exception("SMOKE FAIL: diffrows header/hunk");
+                if (rdRows[2].Kind != DiffRowKind.Context || rdRows[2].OldLineNo != 1 || rdRows[2].NewLineNo != 1)
+                    throw new System.Exception("SMOKE FAIL: diffrows context row");
+                if (rdRows[3].Kind != DiffRowKind.Old || rdRows[3].OldLineNo != 2
+                    || !rdRows[3].RichText.Contains("<mark=#FF6B6B55><s><color=#B95050>OLD</color></s></mark>"))
+                    throw new System.Exception("SMOKE FAIL: diffrows old word mark");
+                if (rdRows[4].Kind != DiffRowKind.New || rdRows[4].NewLineNo != 2
+                    || !rdRows[4].RichText.Contains("<mark=#6BCB7755><color=#1F6E43>NEW</color></mark>"))
+                    throw new System.Exception("SMOKE FAIL: diffrows new word mark");
+                if (rdRows[5].Kind != DiffRowKind.Context || rdRows[5].OldLineNo != 3)
+                    throw new System.Exception("SMOKE FAIL: diffrows trailing context");
+                // 整行染色：纯删（无对侧 + 词级退化路径统一 WrapDeleted/WrapAdded）
+                var rdDel = UnifiedDiffParser.Parse("diff --git a/x b/x\n"
+                    + "--- a/x\n+++ b/x\n@@ -1 +0,0 @@\n-gone\n")[0];
+                var rdDelRows = DiffRows.Build(new List<DiffFile> { rdDel }, 0);
+                if (rdDelRows.Count != 3 || rdDelRows[2].Kind != DiffRowKind.Old
+                    || !rdDelRows[2].RichText.StartsWith("<mark=#FF6B6B55>")
+                    || !rdDelRows[2].RichText.Contains("gone"))
+                    throw new System.Exception("SMOKE FAIL: diffrows whole-line delete wrap");
+                // 折叠：阈值 2 → 5 行正文文件被折叠为 head+hunk+fold
+                var rdFoldSrc = "diff --git a/big.txt b/big.txt\n--- a/big.txt\n+++ b/big.txt\n"
+                    + "@@ -1,3 +1,3 @@\n alpha\n-beta\n+beta2\n gamma\n";
+                var rdFold = DiffRows.Build(UnifiedDiffParser.Parse(rdFoldSrc), 2);
+                if (rdFold.Count != 3 || rdFold[0].Kind != DiffRowKind.FileHeader
+                    || rdFold[1].Kind != DiffRowKind.HunkHeader
+                    || rdFold[2].Kind != DiffRowKind.Fold
+                    || !rdFold[2].RichText.Contains("folded"))
+                    throw new System.Exception($"SMOKE FAIL: diffrows fold count={rdFold.Count}");
+                // DiffViewer 行元素构造（零窗口实例，静态 Builder 断言）
+                var rowEl = DiffViewer.BuildRowElement(rdRows[3]);
+                if (rowEl == null || rowEl.childCount != 2)
+                    throw new System.Exception("SMOKE FAIL: diffviewer row element structure");
+                var rowLabel = rowEl.Q<Label>("diff-text");
+                if (rowLabel == null || rowLabel.text != rdRows[3].RichText)
+                    throw new System.Exception("SMOKE FAIL: diffviewer row label text");
             }
 
             EditorApplication.Exit(0);
