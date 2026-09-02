@@ -1,15 +1,15 @@
 using System;
 using System.Collections.Generic;
-using Unity.Editor.Tasks;
 using UnityEditor;
 using UnityEngine;
+using Unity.Editor.Tasks;
 
 namespace KF.GitUI
 {
     /// <summary>
-    /// Compare with Branch（M2 范围 = name-status 预览；内容级 M3）：
-    /// 第一步选分支（同一过滤逻辑），第二步展示 git diff --name-status 结果。
-    /// 静态过滤见 BranchesPanel.ApplyFilter（本文件不再重复定义，分支管理已移入左侧 BranchesPanel）。
+    /// Compare with Branch（M3 内容级版）：第一步选分支，第二步打开内容级 DiffViewer（unified + 词级高亮）。
+    /// 选分支后 CompareWindow 自行关闭——内容在独立 DiffViewer 窗口展示（D3 决策）。
+    /// OpenPair（两个已明确 ref）一步到位：后台取 U3 diff → DiffRows → DiffViewer.Open。
     /// </summary>
     public sealed class CompareWindow : EditorWindow
     {
@@ -18,10 +18,8 @@ namespace KF.GitUI
         private string commitHashShort = string.Empty;
         private List<GitSession.GitRefInfo> allRefs = new List<GitSession.GitRefInfo>();
         private string filter = string.Empty;
-        private List<string> result = new List<string>();
-        private bool showingResult;
         private string error = string.Empty;
-        private UnityEngine.Vector2 scroll;
+        private bool busy;
 
         public static void Open(GitSession session, string commitHash)
         {
@@ -34,84 +32,108 @@ namespace KF.GitUI
             w.Show();
         }
 
-        /// <summary>直接比较两个 ref（如 目标分支 vs 当前分支、本地 vs 上游）：免去选分支一步，直接展示 name-status。</summary>
+        /// <summary>直接比较两个 ref（本地 vs 上游 / 分支 vs 当前）：免选分支，直接开 DiffViewer。</summary>
         public static void OpenPair(GitSession session, string title, string refA, string refB)
         {
             if (session == null) return;
-            var w = GetWindow<CompareWindow>(true, title);
-            w.session = session;
-            w.commitHash = null;
-            w.commitHashShort = title;
-            w.allRefs = new List<GitSession.GitRefInfo>();
-            w.runPair(refA + " " + refB);
-            w.Show();
+            OpenDiff(session, title, refA, refB);
         }
 
-        private void runPair(string args)
+        private static void OpenDiff(GitSession session, string title, string refA, string refB)
         {
-            error = string.Empty;
-            result.Clear();
-            try
+            // 后台线程取 diff（避免窗口内同步跑 git 卡 UI）；完成后主线程开 DiffViewer
+            var ctx = SynchronizationContextHolder.Current;
+            System.Threading.Tasks.Task.Run(() =>
             {
-                var task = new GitDiffNameStatusTask(session.Platform, "diff --name-status " + args)
-                    .Configure(session.Platform.ProcessManager);
-                var output = task.RunSynchronously();
-                if (task.Successful && !string.IsNullOrEmpty(output))
-                    result.AddRange(output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
-                showingResult = true;
-            }
-            catch (Exception ex) { error = ex.Message; showingResult = false; }
+                try
+                {
+                    var task = GitDiffTask.TwoRefs(session.Platform, refA, refB, 3)
+                        .Configure(session.Platform.ProcessManager);
+                    var output = task.RunSynchronously();
+                    List<DiffRow> rows = new List<DiffRow>();
+                    if (task.Successful && !string.IsNullOrEmpty(output))
+                        rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
+                    ctx?.Post(_ => DiffViewer.Open(title, rows), null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ => ShowError(title, ex.Message), null);
+                }
+            });
+        }
+
+        private static void ShowError(string title, string message)
+        {
+            var w = GetWindow<CompareWindow>(true, title);
+            w.error = message;
+            w.Show();
         }
 
         private void OnGUI()
         {
             if (session == null) { Close(); return; }
 
-            if (!showingResult)
+            if (busy)
             {
-                filter = EditorGUILayout.TextField(I18n.L(I18n.Keys.BranchFilter), filter);
-                scroll = EditorGUILayout.BeginScrollView(scroll);
-                foreach (var r in BranchesPanel.ApplyFilter(allRefs, filter))
-                    if (GUILayout.Button(r.DisplayName))
-                        RunCompare(r);
-                EditorGUILayout.EndScrollView();
-                if (!string.IsNullOrEmpty(error))
-                    EditorGUILayout.HelpBox(error, MessageType.Error);
+                EditorGUILayout.LabelField(I18n.L(I18n.Keys.LoadingChanges));
+                return;
             }
-            else
+            if (!string.IsNullOrEmpty(error))
             {
-                EditorGUILayout.LabelField(I18n.L(I18n.Keys.CompareResultTitle, commitHashShort),
-                    EditorStyles.boldLabel);
-                scroll = EditorGUILayout.BeginScrollView(scroll);
-                if (result.Count == 0)
-                    EditorGUILayout.LabelField(I18n.L(I18n.Keys.CompareNoChanges));
-                else
-                    foreach (var line in result)
-                        EditorGUILayout.LabelField(line, EditorStyles.miniLabel);
-                EditorGUILayout.EndScrollView();
-                if (GUILayout.Button(I18n.L(I18n.Keys.CompareBack)))
-                {
-                    showingResult = false;
-                    result.Clear();
-                }
+                EditorGUILayout.HelpBox(error, MessageType.Error);
+                return;
             }
+
+            filter = EditorGUILayout.TextField(I18n.L(I18n.Keys.BranchFilter), filter);
+            scroll = EditorGUILayout.BeginScrollView(scroll);
+            foreach (var r in BranchesPanel.ApplyFilter(allRefs, filter))
+                if (GUILayout.Button(r.DisplayName))
+                    RunCompare(r);
+            EditorGUILayout.EndScrollView();
+            if (!string.IsNullOrEmpty(error))
+                EditorGUILayout.HelpBox(error, MessageType.Error);
         }
+
+        private UnityEngine.Vector2 scroll;
 
         private void RunCompare(GitSession.GitRefInfo r)
         {
+            busy = true;
             error = string.Empty;
-            try
+            var title = commitHashShort + " vs " + r.DisplayName;
+            // 选完即关（内容进 DiffViewer）
+            var self = this;
+            var sessionCopy = session;
+            var hash = commitHash;
+            var ctx = SynchronizationContextHolder.Current;
+            System.Threading.Tasks.Task.Run(() =>
             {
-                var task = new GitDiffNameStatusTask(session.Platform,
-                        $"diff --name-status {commitHash} {r.DisplayName}")
-                    .Configure(session.Platform.ProcessManager);
-                var output = task.RunSynchronously();
-                result.Clear();
-                if (task.Successful && !string.IsNullOrEmpty(output))
-                    result.AddRange(output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
-                showingResult = true;
-            }
-            catch (Exception ex) { error = ex.Message; }
+                try
+                {
+                    var task = GitDiffTask.TwoRefs(sessionCopy.Platform, hash, r.DisplayName, 3)
+                        .Configure(sessionCopy.Platform.ProcessManager);
+                    var output = task.RunSynchronously();
+                    List<DiffRow> rows = new List<DiffRow>();
+                    if (task.Successful && !string.IsNullOrEmpty(output))
+                        rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
+                    ctx?.Post(_ =>
+                    {
+                        self.Close();
+                        DiffViewer.Open(title, rows);
+                    }, null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ => { self.busy = false; self.error = ex.Message; }, null);
+                }
+            });
         }
+    }
+
+    /// <summary>线程上下文捕获（后台 diff → 主线程 UI 的标准通道；与 GitWindow.RunStatusOp 同法）。</summary>
+    internal static class SynchronizationContextHolder
+    {
+        public static System.Threading.SynchronizationContext Current
+            => System.Threading.SynchronizationContext.Current;
     }
 }

@@ -705,6 +705,18 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: e2e apply revert hunk:\n" + diffAfter);
                 }
                 DeleteDir(applyDir);
+
+                // 27) CompareWindow 内容级入口（M3：选分支 → DiffViewer）：静态方法可调（批处理下窗口不可显示，仅验证入口签名）
+                var compareOpen = typeof(CompareWindow).GetMethod("Open",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, new[] { typeof(GitSession), typeof(string) }, null);
+                var compareOpenPair = typeof(CompareWindow).GetMethod("OpenPair",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, new[] { typeof(GitSession), typeof(string), typeof(string), typeof(string) }, null);
+                if (compareOpen == null || compareOpenPair == null)
+                    throw new System.Exception("SMOKE FAIL: compare window entries missing");
+                // OpenPair 立即返回后开后台 diff 线程——批处理下无窗口可开，但入口不应同步抛异常
+                // （Verify：分支面板接线处 OpenPair 调用编译通过即接线正确，此处入口反射已保证签名）
             }
 
             EditorApplication.Exit(0);
