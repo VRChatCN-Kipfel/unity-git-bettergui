@@ -557,6 +557,70 @@ namespace KF.GitUI
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
+        /// <summary>hunk 级操作（M3-SOLUTION §3.3）：对已捕获的 diff 输出切片目标 hunk → git apply 三态。</summary>
+        /// <param name="diffOutput">git diff 完整输出（工作区 diff 或 --cached diff，取决于 mode 语义）。</param>
+        /// <param name="fileIndex">目标文件序号（0 基）。</param>
+        /// <param name="hunkIndex">目标 hunk 序号（0 基）。</param>
+        /// <param name="mode">Stage=apply --cached；Unstage=apply --cached -R；Revert=apply -R。</param>
+        /// <exception cref="InvalidOperationException">patch 提取失败或 git apply 失败（RunOp 统一包装）。</exception>
+        public void ApplyHunk(string diffOutput, int fileIndex, int hunkIndex, GitApplyMode mode)
+        {
+            var patchPath = GitPatchBuilder.WriteHunkPatch(diffOutput, fileIndex, hunkIndex, projectPath);
+            if (patchPath == null)
+                throw new InvalidOperationException("git apply failed: hunk slice not found (diff changed?)");
+            try
+            {
+                RunOp("git apply", new GitApplyTask(platform, patchPath, mode).Configure(platform.ProcessManager));
+            }
+            catch (Exception ex)
+            {
+                // 诊断友好：patch 内容附进异常（hunk 级 apply 失败多为上下文漂移/CRLF——直接可读）
+                string patchInfo;
+                try { patchInfo = System.IO.File.ReadAllText(patchPath); }
+                catch { patchInfo = "<unreadable>"; }
+                throw new InvalidOperationException(ex.Message + "\n[patch]\n" + patchInfo, ex);
+            }
+        }
+
+        /// <summary>便捷：对工作区单个文件执行 hunk 级 Stage/Revert（内部先取 git diff）。</summary>
+        public void ApplyWorktreeHunk(string path, int hunkIndex, GitApplyMode mode)
+        {
+            var diff = RunDiffRaw("-- " + GitDiffTask.JoinPaths(new[] { path }));
+            ApplyHunk(diff, 0, hunkIndex, mode);
+        }
+
+        /// <summary>便捷：对已暂存文件执行 hunk 级 Unstage（内部取 git diff --cached）。</summary>
+        public void UnstageHunk(string path, int hunkIndex)
+        {
+            var diff = RunDiffRaw("--cached -- " + GitDiffTask.JoinPaths(new[] { path }));
+            ApplyHunk(diff, 0, hunkIndex, GitApplyMode.Unstage);
+        }
+
+        private string RunDiffRaw(string arguments)
+        {
+            var task = GitDiffTask.Raw(platform, arguments).Configure(platform.ProcessManager);
+            Prepare(task);
+            return task.RunSynchronously();
+        }
+
+        /// <summary>工作区完整 diff（冒烟/hunk 操作共用）。</summary>
+        public string RunDiffPublic()
+        {
+            return RunDiffRaw("");
+        }
+
+        /// <summary>已暂存完整 diff（冒烟/UnstageHunk 共用）。</summary>
+        public string RunCachedDiffPublic()
+        {
+            return RunDiffRaw("--cached");
+        }
+
+        /// <summary>工作区完整 diff（--unified=0：相邻改动拆成独立 hunk——hunk 级操作的前提）。</summary>
+        public string RunDiffUnified0Public()
+        {
+            return RunDiffRaw("--unified=0");
+        }
+
         /// <summary>使 refs 缓存失效（分支弹窗新建/删除/打标签后调用；历史/状态缓存不受影响）。</summary>
         public void InvalidateRefs()
         {

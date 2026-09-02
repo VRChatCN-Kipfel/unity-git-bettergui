@@ -612,6 +612,99 @@ namespace KF.GitUI
                 var rowLabel = rowEl.Q<Label>("diff-text");
                 if (rowLabel == null || rowLabel.text != rdRows[3].RichText)
                     throw new System.Exception("SMOKE FAIL: diffviewer row label text");
+
+                // 26) GitPatchBuilder + GitApplyTask：patch 切片（LF/末换行/保留标记 + 上下文补齐）+ 三态参数 + e2e apply
+                // U3 风格手写 diff：hunk 块内自带上下文 → 原样切片
+                var applyDiff = "diff --git a/h.txt b/h.txt\n"
+                    + "index 1111111..2222222 100644\n"
+                    + "--- a/h.txt\n+++ b/h.txt\n"
+                    + "@@ -2,2 +2,2 @@\n"
+                    + "  line1\n-old\n+new\n"
+                    + "@@ -7,1 +7,1 @@\n"
+                    + "  line6\n-x\n+y\n";
+                var patchPath = GitPatchBuilder.WriteHunkPatch(applyDiff, 0, 0, s.ProjectPath);
+                if (patchPath == null || string.IsNullOrEmpty(patchPath))
+                    throw new System.Exception("SMOKE FAIL: patch builder returned null");
+                // 切片内容：文件头 + @@ -2,2 +2,2 @@ + 块内（line1/-old/+new）；LF + 末换行；排除 hunk2（@@ -7 及其块）
+                var patchText = System.IO.File.ReadAllText(patchPath);
+                if (!patchText.Contains("diff --git") || !patchText.Contains("@@ -2,2 +2,2 @@")
+                    || !patchText.Contains("-old") || !patchText.Contains("+new")
+                    || !patchText.Contains("  line1")
+                    || patchText.Contains("@@ -7") || patchText.Contains("-x\n+y")
+                    || !patchText.EndsWith("\n", StringComparison.Ordinal)
+                    || patchText.Contains("\r"))
+                    throw new System.Exception("SMOKE FAIL: patch slice content/LF:\n" + patchText);
+                // 切片保 "No newline" 标记（U3 块内含有该标记）
+                var patchNoNl = GitPatchBuilder.WriteHunkPatch(
+                    "diff --git a/n.txt b/n.txt\n--- a/n.txt\n+++ b/n.txt\n@@ -1,1 +1,1 @@\n-old\n+new\n\\ No newline at end of file\n",
+                    0, 0, s.ProjectPath);
+                if (patchNoNl == null || !System.IO.File.ReadAllText(patchNoNl).Contains("\\ No newline at end of file"))
+                    throw new System.Exception("SMOKE FAIL: patch slice no-newline marker");
+                // 多文件：fileIndex=1 取第二文件 hunk
+                var applyDiff2 = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n-aaa\n+AAA\n"
+                    + "diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1,1 +1,1 @@\n-bbb\n+BBB\n";
+                var patch2 = GitPatchBuilder.WriteHunkPatch(applyDiff2, 1, 0, s.ProjectPath);
+                if (patch2 == null || !System.IO.File.ReadAllText(patch2).Contains("b/b.txt")
+                    || System.IO.File.ReadAllText(patch2).Contains("a/a.txt"))
+                    throw new System.Exception("SMOKE FAIL: patch slice fileIndex");
+                // U0 diff（无上下文）→ 外部补齐 ±2 上下文 + 重算 @@ 头（e2e 实际路径）
+                var u0Diff = "diff --git a/u.txt b/u.txt\n--- a/u.txt\n+++ b/u.txt\n"
+                    + "@@ -3 +3 @@ x\n-old\n+new\n@@ -9 +9 @@ y\n-x\n+y\n";
+                var patchU0 = GitPatchBuilder.WriteHunkPatch(u0Diff, 0, 0, s.ProjectPath);
+                if (patchU0 == null)
+                    throw new System.Exception("SMOKE FAIL: patch builder u0 null");
+                var patchU0Text = System.IO.File.ReadAllText(patchU0);
+                // 手写 U0 无任何 ' ' 上下文行可补 → 头仅变更行计数；但至少保留目标 hunk 且排除 hunk2
+                if (!patchU0Text.Contains("-old") || !patchU0Text.Contains("+new")
+                    || patchU0Text.Contains("@@ -9") || patchU0Text.Contains("-x\n+y"))
+                    throw new System.Exception("SMOKE FAIL: patch u0 slice:\n" + patchU0Text);
+
+                // e2e：一次性仓 init→seed→改→apply --cached→断言 index 变化→apply -R 整块撤销→清理
+                var applyDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-apply-repo");
+                DeleteDir(applyDir);
+                System.IO.Directory.CreateDirectory(applyDir);
+                var gitExe2 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe2, "init -b master", applyDir, out var aErr, out var _);
+                RunCli(gitExe2, "config user.name smoke", applyDir, out aErr, out var _);
+                RunCli(gitExe2, "config user.email smoke@local", applyDir, out aErr, out var _);
+                RunCli(gitExe2, "config commit.gpgsign false", applyDir, out aErr, out var _);
+                RunCli(gitExe2, "config core.autocrlf false", applyDir, out aErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(applyDir, "h.txt"),
+                    "line1\nold\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nx\nline12\n");
+                RunCli(gitExe2, "add h.txt", applyDir, out aErr, out var _);
+                RunCli(gitExe2, "commit -m seed", applyDir, out aErr, out var _);
+                // 工作区改两处（line2 与 line11，间隔 9 行 > 2*3+1=7 → U3 下两个独立 hunk）
+                System.IO.File.WriteAllText(System.IO.Path.Combine(applyDir, "h.txt"),
+                    "line1\nNEW1\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nNEW2\nline12\n");
+                using (var sa = GitSession.Open(applyDir))
+                {
+                    // U3 采集（自带上下文 → PatchBuilder 原样切片 → apply 可定位）
+                    var diffText = sa.RunDiffPublic();
+                    if (string.IsNullOrEmpty(diffText) || !diffText.Contains("@@ -1,5 +1,5 @@")
+                        || !diffText.Contains("@@ -8,5 +8,5 @@"))
+                        throw new System.Exception("SMOKE FAIL: e2e apply diff capture:\n" + diffText);
+                    // 暂存第一个 hunk
+                    sa.ApplyHunk(diffText, 0, 0, GitApplyMode.Stage);
+                    var stA = sa.LoadStatus();
+                    if (stA.Entries.Count != 1 || !stA.Entries[0].Staged)
+                        throw new System.Exception("SMOKE FAIL: e2e apply stage hunk");
+                    // 取消暂存第一个 hunk（--cached diff → -R）
+                    var cachedDiff = sa.RunCachedDiffPublic();
+                    if (!cachedDiff.Contains("@@ -1,5 +1,5 @@"))
+                        throw new System.Exception("SMOKE FAIL: e2e apply cached diff capture");
+                    sa.ApplyHunk(cachedDiff, 0, 0, GitApplyMode.Unstage);
+                    var stB = sa.LoadStatus();
+                    if (stB.Entries.Count != 1 || stB.Entries[0].Staged)
+                        throw new System.Exception("SMOKE FAIL: e2e apply unstage hunk");
+                    // 撤销工作区第一个 hunk（apply -R）
+                    sa.ApplyHunk(diffText, 0, 0, GitApplyMode.Revert);
+                    // 撤销后 line2 回 old，line11 仍 NEW2 → 工作区还有 1 个 hunk 的改动
+                    var diffAfter = sa.RunDiffPublic();
+                    if (string.IsNullOrEmpty(diffAfter) || diffAfter.Contains("@@ -1,5 +1,5 @@")
+                        || !diffAfter.Contains("@@ -8,5 +8,5 @@"))
+                        throw new System.Exception("SMOKE FAIL: e2e apply revert hunk:\n" + diffAfter);
+                }
+                DeleteDir(applyDir);
             }
 
             EditorApplication.Exit(0);
