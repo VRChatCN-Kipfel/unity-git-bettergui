@@ -542,6 +542,22 @@ namespace KF.GitUI
                     if (liveFiles.Count < 1)
                         throw new System.Exception("SMOKE FAIL: live diff parsed empty");
                 }
+
+                // 24) DiffRichText：转义 + 新旧行标签拼装（词级高亮渲染字符串正确性，纯字符串断言）
+                if (DiffRichText.Escape("a<b>&c") != "a&lt;b&gt;&amp;c")
+                    throw new System.Exception("SMOKE FAIL: richtext escape");
+                var rtWr = WordDiff.Compare("beta OLD word", "beta NEW word");
+                var rtDel = DiffRichText.BuildDeletedLine(rtWr.OldFragments, "beta OLD word");
+                var rtAdd = DiffRichText.BuildAddedLine(rtWr.NewFragments, "beta NEW word");
+                if (!rtDel.Contains("<mark=#FF6B6B55><s><color=#B95050>OLD</color></s></mark>")
+                    || !rtAdd.Contains("<mark=#6BCB7755><color=#1F6E43>NEW</color></mark>")
+                    || rtDel.StartsWith("<mark=") || rtAdd.StartsWith("<mark="))
+                    throw new System.Exception($"SMOKE FAIL: richtext del={rtDel} add={rtAdd}");
+                if (rtDel != "beta <mark=#FF6B6B55><s><color=#B95050>OLD</color></s></mark> word"
+                    || rtAdd != "beta <mark=#6BCB7755><color=#1F6E43>NEW</color></mark> word")
+                    throw new System.Exception($"SMOKE FAIL: richtext exact del={rtDel} add={rtAdd}");
+                if (DiffRichText.BuildPlainLine("plain <text>") != "plain &lt;text&gt;")
+                    throw new System.Exception("SMOKE FAIL: richtext plain line");
             }
 
             EditorApplication.Exit(0);
