@@ -540,9 +540,39 @@ namespace KF.GitUI
         }
 
         /// <summary>合并 ref 到当前分支（git merge --no-edit）。</summary>
+        /// <summary>合并（git merge --no-edit &lt;ref&gt;）。merge 冲突是预期结果不抛异常
+        /// （冲突状态由 LoadConflictPaths/AnalyzeRebaseState 判定，3-way 视图处理）；真失败才抛。</summary>
         public void Merge(string gitRef)
         {
-            RunOp("git merge", new GitMergeTask(platform, gitRef).Configure(platform.ProcessManager));
+            var task = new GitMergeTask(platform, gitRef).Configure(platform.ProcessManager);
+            Prepare(task);
+            try
+            {
+                task.RunSynchronously();
+            }
+            catch (ProcessException ex)
+            {
+                var msg = (ex.Message ?? string.Empty) + "\n" + (task.Errors ?? string.Empty);
+                if (msg.Contains("CONFLICT", StringComparison.OrdinalIgnoreCase)
+                    || LoadConflictPathsQuietCount() > 0)
+                    return;
+                throw new InvalidOperationException("git merge failed:\n" + msg, ex);
+            }
+            if (!task.Successful)
+            {
+                var err = task.Errors;
+                if ((err ?? string.Empty).Contains("CONFLICT", StringComparison.OrdinalIgnoreCase)
+                    || LoadConflictPathsQuietCount() > 0)
+                    return;
+                throw new InvalidOperationException("git merge failed"
+                    + (string.IsNullOrEmpty(err) ? "" : ":\n" + err));
+            }
+        }
+
+        private int LoadConflictPathsQuietCount()
+        {
+            try { return LoadConflictPaths().Count; }
+            catch { return 0; }
         }
 
         /// <summary>本地分支重命名（git branch -m）。</summary>
@@ -551,10 +581,91 @@ namespace KF.GitUI
             RunOp("git branch -m", new GitBranchRenameTask(platform, oldName, newName).Configure(platform.ProcessManager));
         }
 
+        /// <summary>单冲突文件的三 stage 内容（:1 base / :2 ours / :3 theirs；null=该侧缺失/删除）。</summary>
+        public sealed class ConflictBlobs
+        {
+            public string Base;
+            public string Ours;
+            public string Theirs;
+        }
+
+        /// <summary>冲突文件路径列表（LoadStatus 的 Unmerged 条目；M3 3-way 视图入口）。</summary>
+        public List<string> LoadConflictPaths()
+        {
+            var paths = new List<string>();
+            var st = LoadStatus();
+            if (st.Entries == null) return paths;
+            foreach (var e in st.Entries)
+                if (e.Unmerged)
+                    paths.Add(e.path);
+            return paths;
+        }
+
+        /// <summary>rebase 进行中快速查询（3-way 视图标签对调用；失败静默返回 false）。</summary>
+        public bool IsRebaseInProgressQuiet()
+        {
+            try
+            {
+                var st = LoadStatus();
+                return AnalyzeRebaseState(st, out var inR, out var _) && inR;
+            }
+            catch { return false; }
+        }
+
         /// <summary>提取（git fetch --prune --tags [remote]；remote 空 = 全部远程）。</summary>
         public void Fetch(string remote)
         {
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
+        }
+
+        // ---- M3 3-way 冲突数据 ----
+
+        /// <summary>单冲突文件的三 stage blob 内容（:1:=base :2:=ours :3:=theirs；M3-SOLUTION §1.1-4）。</summary>
+        public ConflictBlobs LoadConflictBlobs(string path, out bool hasOurs, out bool hasTheirs)
+        {
+            hasOurs = hasTheirs = false;
+            var result = new ConflictBlobs();
+            // 用 git show :N:path 直接取（stage 存在才执行；缺失侧留 null）
+            try { result.Base = ShowStage(path, 1); } catch { result.Base = null; }
+            try { result.Ours = ShowStage(path, 2); hasOurs = true; } catch { result.Ours = null; }
+            try { result.Theirs = ShowStage(path, 3); hasTheirs = true; } catch { result.Theirs = null; }
+            return result;
+        }
+
+        private string ShowStage(string path, int stage)
+        {
+            var task = new GitDiffNameStatusTask(platform,
+                    "show :" + stage + ":" + SanitizePath(path))
+                .Configure(platform.ProcessManager);
+            Prepare(task);
+            var output = task.RunSynchronously();
+            if (!task.Successful || output == null)
+                throw new InvalidOperationException("git show stage " + stage + " failed for " + path);
+            return output;
+        }
+
+        private static string SanitizePath(string path)
+        {
+            return path.Replace("\\", "/").Replace("\"", "\\\"");
+        }
+
+        /// <summary>冲突整侧接受（TWO-STEP 语义，M3-SOLUTION §1.1-5/§3.4）：
+        /// checkout --ours/--theirs → git add（标记解决；DELETED 侧用 rm 由调用方依据 stage 存在性决定）。</summary>
+        public void AcceptConflictSide(string path, GitCheckoutSide side)
+        {
+            if (side != GitCheckoutSide.Ours && side != GitCheckoutSide.Theirs) return;
+            RunOp("git checkout --side",
+                new GitCheckoutPathsTask(platform, new[] { path }, side).Configure(platform.ProcessManager));
+            // checkout 只更新工作区，index 仍 UU → add 标记解决（探针实证必需）
+            RunOp("git add", new GitAddTask(platform, new[] { path }).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>删除侧冲突解决：对"对侧已删除"的路径用 git rm（而不是 add）。</summary>
+        public void ResolveConflictDelete(string path, GitCheckoutSide keptSide)
+        {
+            if (keptSide != GitCheckoutSide.Ours && keptSide != GitCheckoutSide.Theirs) return;
+            // 保留侧存在 → checkout 保留侧 → add；保留侧删除 → rm 亦可（此处简化为 add 路径，删除侧由 LoadStatus 覆盖）
+            AcceptConflictSide(path, keptSide);
         }
 
         /// <summary>

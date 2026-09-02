@@ -770,6 +770,56 @@ namespace KF.GitUI
                         throw new System.Exception("SMOKE FAIL: rebase abort restore: lb=" + rbAfter.LocalBranch);
                 }
                 DeleteDir(rbDir);
+
+                // 30) 3-way 冲突数据层（M3-SOLUTION §1.1/§3.4）：merge 冲突 → 三 stage + 整侧接受 + 解决
+                var m3Dir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-merge3-repo");
+                DeleteDir(m3Dir);
+                System.IO.Directory.CreateDirectory(m3Dir);
+                var gitExe4 = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExe4, "init -b main", m3Dir, out var mErr, out var _);
+                RunCli(gitExe4, "config user.name smoke", m3Dir, out mErr, out var _);
+                RunCli(gitExe4, "config user.email smoke@local", m3Dir, out mErr, out var _);
+                RunCli(gitExe4, "config commit.gpgsign false", m3Dir, out mErr, out var _);
+                RunCli(gitExe4, "config core.autocrlf false", m3Dir, out mErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(m3Dir, "c.txt"), "x\nshared\nz\n");
+                RunCli(gitExe4, "add c.txt", m3Dir, out mErr, out var _);
+                RunCli(gitExe4, "commit -m base", m3Dir, out mErr, out var _);
+                RunCli(gitExe4, "checkout -b side", m3Dir, out mErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(m3Dir, "c.txt"), "x\nSIDE\nz\n");
+                RunCli(gitExe4, "commit -am side-change", m3Dir, out mErr, out var _);
+                RunCli(gitExe4, "checkout main", m3Dir, out mErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(m3Dir, "c.txt"), "x\nMAIN\nz\n");
+                RunCli(gitExe4, "commit -am main-change", m3Dir, out mErr, out var _);
+                using (var sm = GitSession.Open(m3Dir))
+                {
+                    // merge 冲突（新语义：冲突不抛，状态由 status 判定——M3 3-way 入口）
+                    sm.Merge("side");
+                    var mst = sm.LoadStatus();
+                    if (mst.Entries == null || !mst.Entries.Any(e => e.Unmerged))
+                        throw new System.Exception("SMOKE FAIL: merge3 UU missing after merge");
+                    if (GitSession.AnalyzeRebaseState(mst, out var mRebase, out var mUu) || mUu < 1)
+                        throw new System.Exception("SMOKE FAIL: merge3 should NOT be rebase mode");
+                    if (sm.IsRebaseInProgressQuiet())
+                        throw new System.Exception("SMOKE FAIL: merge3 rebase flag false positive");
+                    // 三 stage 内容：base=shared ours=MAIN theirs=SIDE
+                    var blobs = sm.LoadConflictBlobs("c.txt", out var hasO, out var hasT);
+                    if (!hasO || !hasT || blobs.Ours == null || blobs.Theirs == null || blobs.Base == null)
+                        throw new System.Exception("SMOKE FAIL: merge3 blobs missing side");
+                    if (!blobs.Ours.Contains("MAIN") || !blobs.Theirs.Contains("SIDE") || !blobs.Base.Contains("shared"))
+                        throw new System.Exception("SMOKE FAIL: merge3 blob contents");
+                    // 整侧接受 ours → add 标记解决 → UU 清零
+                    sm.AcceptConflictSide("c.txt", GitCheckoutSide.Ours);
+                    var mst2 = sm.LoadStatus();
+                    if (mst2.Entries == null || mst2.Entries.Any(e => e.Unmerged))
+                        throw new System.Exception("SMOKE FAIL: merge3 accept ours should clear UU");
+                    var cContent = System.IO.File.ReadAllText(System.IO.Path.Combine(m3Dir, "c.txt"));
+                    if (!cContent.Contains("MAIN") || cContent.Contains("SIDE"))
+                        throw new System.Exception("SMOKE FAIL: merge3 accept ours content");
+                    // 冲突列表加载（下次冲突前清空现状——此处无 UU）
+                    if (sm.LoadConflictPaths().Count != 0)
+                        throw new System.Exception("SMOKE FAIL: merge3 conflict paths not empty after resolve");
+                }
+                DeleteDir(m3Dir);
             }
 
             EditorApplication.Exit(0);
@@ -1272,10 +1322,40 @@ namespace KF.GitUI
             if (now - lastFingerprintCheck < 1.5) return;
             lastFingerprintCheck = now;
             var fp = session.GetFingerprint();
+            // 冲突轮询（低频，独立于指纹：UU 只改 status 不改 history 指纹）
+            PollConflicts(now);
             if (fp == lastFingerprint) return;
             lastFingerprint = fp;
             try { RefreshData(); }
             catch (Exception ex) { Debug.LogWarning("[gitui] auto-refresh failed: " + ex); }
+        }
+
+        private double lastConflictCheck;
+
+        private void PollConflicts(double now)
+        {
+            if (conflictBadge == null || now - lastConflictCheck < 3) return;
+            lastConflictCheck = now;
+            try
+            {
+                var paths = session.LoadConflictPaths();
+                if (paths.Count > 0)
+                {
+                    conflictBadge.text = I18n.L(I18n.Keys.RebaseConflictHint, paths.Count);
+                    conflictBadge.style.display = DisplayStyle.Flex;
+                    conflictBadge.tooltip = string.Join("\n", paths);
+                }
+                else
+                {
+                    conflictBadge.style.display = DisplayStyle.None;
+                }
+            }
+            catch { }
+        }
+
+        private void OpenMerge3()
+        {
+            Merge3Window.Open(session);
         }
 
         private void BuildGraphPipeline()
@@ -1411,6 +1491,7 @@ namespace KF.GitUI
         private bool branchesPaneVisible = true;
         private const string PrefGraphFilter = "kf.gitui.graph.filter";
         private Button branchFilterBtn;
+        private Button conflictBadge;
         private string graphFilterRevision; // null = 全部分支；否则为 ref（本地名 / refs/remotes/… / refs/tags/…）
 
         private VisualElement BuildLayout()
@@ -1435,6 +1516,13 @@ namespace KF.GitUI
             branchFilterBtn.name = "btn-branches";
             branchFilterBtn.tooltip = I18n.L(I18n.Keys.BranchFilterAll);
             toolbar.Add(branchFilterBtn);
+            // M3：冲突徽标（merge/rebase 冲突时出现，点击开 3-way 视图）
+            conflictBadge = new Button(OpenMerge3) { text = "" };
+            conflictBadge.name = "btn-conflicts";
+            conflictBadge.style.display = DisplayStyle.None;
+            conflictBadge.style.backgroundColor = new Color(0.85f, 0.30f, 0.30f, 1f);
+            conflictBadge.style.color = Color.white;
+            toolbar.Add(conflictBadge);
             root.Add(toolbar);
 
             // 主体：左 = 常驻分支面板（用户拍板保留在主窗口左侧，不弹窗）；右 = Log|Commit 页面

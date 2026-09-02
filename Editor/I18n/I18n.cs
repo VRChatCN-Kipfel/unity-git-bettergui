@@ -126,6 +126,15 @@ namespace KF.GitUI
                 [Keys.RebaseConflictHint] = "Rebase conflict: {0} files need resolution (see 3-way view)",
                 [Keys.RebaseContinue] = "Continue Rebase",
                 [Keys.RebaseAbort] = "Abort Rebase",
+                [Keys.Merge3Title] = "Resolve Conflicts",
+                [Keys.Merge3NoConflicts] = "(no conflicts)",
+                [Keys.Merge3File] = "Conflicts: {0}",
+                [Keys.Merge3Yours] = "Yours",
+                [Keys.Merge3Theirs] = "Theirs",
+                [Keys.Merge3AcceptOurs] = "Accept Yours",
+                [Keys.Merge3AcceptTheirs] = "Accept Theirs",
+                [Keys.Merge3RebaseSwapNote] = "[rebase: Yours/Theirs swapped per git semantics]",
+                [Keys.Merge3AllResolved] = "All conflicts resolved — commit (merge) or continue (rebase)",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

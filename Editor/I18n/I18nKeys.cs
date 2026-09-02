@@ -122,6 +122,17 @@ namespace KF.GitUI
         public const string RebaseConflictHint = "rebase.conflictHint"; // {0}=冲突文件数
         public const string RebaseContinue = "rebase.continue";
         public const string RebaseAbort = "rebase.abort";
+
+        // M3 3-way 冲突视图
+        public const string Merge3Title = "merge3.title";
+        public const string Merge3NoConflicts = "merge3.noConflicts";
+        public const string Merge3File = "merge3.file"; // {0}=路径
+        public const string Merge3Yours = "merge3.yours";
+        public const string Merge3Theirs = "merge3.theirs";
+        public const string Merge3AcceptOurs = "merge3.acceptOurs";
+        public const string Merge3AcceptTheirs = "merge3.acceptTheirs";
+        public const string Merge3RebaseSwapNote = "merge3.rebaseSwapNote";
+        public const string Merge3AllResolved = "merge3.allResolved";
         }
     }
 }
