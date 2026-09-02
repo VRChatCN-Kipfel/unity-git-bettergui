@@ -1190,6 +1190,44 @@ namespace KF.GitUI
                         throw new System.Exception($"SMOKE FAIL: blame uncommitted marker={blame[1].CommitShort}");
                 }
                 DeleteDir(blDir);
+
+                // 39) M3 双击文件联动数据管道（HEAD vs 工作区 单文件 diff → Rows；OpenFileDiff 内部同路径）
+                var dblDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-dblclick-repo");
+                DeleteDir(dblDir);
+                System.IO.Directory.CreateDirectory(dblDir);
+                var gitExeD = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExeD, "init -b main", dblDir, out var dbErr, out var _);
+                RunCli(gitExeD, "config user.name smoke", dblDir, out dbErr, out var _);
+                RunCli(gitExeD, "config user.email smoke@local", dblDir, out dbErr, out var _);
+                RunCli(gitExeD, "config commit.gpgsign false", dblDir, out dbErr, out var _);
+                RunCli(gitExeD, "config core.autocrlf false", dblDir, out dbErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dblDir, "d.txt"), "old content\n");
+                RunCli(gitExeD, "add d.txt", dblDir, out dbErr, out var _);
+                RunCli(gitExeD, "commit -m base", dblDir, out dbErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dblDir, "d.txt"), "new content\n");
+                using (var sdb = GitSession.Open(dblDir))
+                {
+                    var dbTask = GitDiffTask.Raw(sdb.Platform, "HEAD -- " + GitDiffTask.JoinPaths(new[] { "d.txt" }))
+                        .Configure(sdb.Platform.ProcessManager);
+                    var dbOut = dbTask.RunSynchronously();
+                    if (!dbTask.Successful || string.IsNullOrEmpty(dbOut))
+                        throw new System.Exception("SMOKE FAIL: dblclick diff empty");
+                    var dbRows = DiffRows.Build(UnifiedDiffParser.Parse(dbOut));
+                    // 单文件单行改：header + hunk header + old + new = 4
+                    var dbKinds = string.Join(",", dbRows.Select(r => r.Kind.ToString()));
+                    if (dbRows.Count != 4)
+                        throw new System.Exception($"SMOKE FAIL: dblclick rows={dbRows.Count} expect 4: {dbKinds}");
+                    if (dbRows[0].Kind != DiffRowKind.FileHeader
+                        || dbRows[1].Kind != DiffRowKind.HunkHeader)
+                        throw new System.Exception("SMOKE FAIL: dblclick header/hunk: " + dbKinds);
+                    if (dbRows[2].Kind != DiffRowKind.Old
+                        || !dbRows[2].RichText.Contains("old") || !dbRows[2].RichText.Contains("content"))
+                        throw new System.Exception($"SMOKE FAIL: dblclick old row: {dbKinds} | {dbRows[2].RichText}");
+                    if (dbRows[3].Kind != DiffRowKind.New
+                        || !dbRows[3].RichText.Contains("new") || !dbRows[3].RichText.Contains("content"))
+                        throw new System.Exception("SMOKE FAIL: dblclick new row: " + dbKinds);
+                }
+                DeleteDir(dblDir);
             }
 
             EditorApplication.Exit(0);
@@ -1519,6 +1557,35 @@ namespace KF.GitUI
         {
             if (session == null) return;
             CompareWindow.Open(session, e.CommitID);
+        }
+
+        /// <summary>M3：双击文件联动（ChangesTree.ItemChosen）——HEAD vs 工作区 单文件 diff → DiffViewer。</summary>
+        private void OpenFileDiff(ChangeItem item)
+        {
+            if (session == null || item == null || item.IsDirectory) return;
+            var path = item.OpsPath ?? item.Path;
+            var sessionCopy = session;
+            var title = "HEAD vs " + path;
+            var ctx = System.Threading.SynchronizationContext.Current;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    // git diff HEAD -- path（工作区含未暂存+暂存合并视图）
+                    var task = GitDiffTask.Raw(sessionCopy.Platform,
+                            "HEAD -- " + GitDiffTask.JoinPaths(new[] { path }))
+                        .Configure(sessionCopy.Platform.ProcessManager);
+                    var output = task.RunSynchronously();
+                    List<DiffRow> rows = new List<DiffRow>();
+                    if (task.Successful && !string.IsNullOrEmpty(output))
+                        rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
+                    ctx?.Post(_ => DiffViewer.Open(title, rows), null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ => Debug.LogWarning("[gitui] open diff failed: " + ex.Message), null);
+                }
+            });
         }
 
         private static void PromptCreateTag(GitSession session, GitLogEntry e, Action onMutated)
@@ -2192,6 +2259,8 @@ namespace KF.GitUI
             // 提交详情树轻量右键（Open / Copy Path；只读无暂存/撤销）
             changesTree.ContextActionProvider = item =>
                 BuildFileContextActions(session, item, null, true, null);
+            // M3：双击文件 → DiffViewer（HEAD vs 工作区 单文件）
+            changesTree.ItemChosen += OpenFileDiff;
             inner.Add(changesTree);
             var detailScroll = new ScrollView(ScrollViewMode.Vertical);
             detailText = new Label(I18n.L(I18n.Keys.SelectACommit));
@@ -2223,6 +2292,7 @@ namespace KF.GitUI
             commitTree = new ChangesTree(ChangesTree.Mode.Checkable);
             commitTree.name = "commit-tree";
             commitTree.ToggleChanged += OnWorkingTreeToggle;
+            commitTree.ItemChosen += OpenFileDiff;
             commitTree.ContextActionProvider = item =>
                 BuildFileContextActions(session, item, workingEntries, false, RefreshWorkingStatus);
             split.Add(commitTree);
