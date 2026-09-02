@@ -679,6 +679,38 @@ namespace KF.GitUI
             }
         }
 
+        // ---- M3 P2 reflog 最近分支 ----
+
+        /// <summary>
+        /// 最近签出过的分支（reflog %gs 的 "checkout: moving from A to B" 取 B；去重、跳过 HEAD、截断到 N 条）。
+        /// Branch tab 右击语义参照 JetBrains GitBranchesComboBoxAction 数据源（reflog 解析）。
+        /// </summary>
+        public List<string> RecentBranches(int count)
+        {
+            var result = new List<string>();
+            var task = new GitReflogTask(platform, 30).Configure(platform.ProcessManager);
+            Prepare(task);
+            var output = task.RunSynchronously();
+            if (!task.Successful || output == null) return result;
+            foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                // 行格式 %h|%gd|%gs
+                var parts = line.Split('|');
+                if (parts.Length < 3) continue;
+                var gs = parts[2];
+                if (!gs.StartsWith("checkout: moving from ", StringComparison.Ordinal)) continue;
+                var spec = gs.Substring("checkout: moving from ".Length).Trim();
+                // spec 形如 "A to B"；B 是目标分支
+                var arrow = spec.IndexOf(" to ", StringComparison.Ordinal);
+                var to = arrow >= 0 ? spec.Substring(arrow + 4).Trim() : spec;
+                if (to == "HEAD" || to.Length == 0) continue;
+                if (!result.Contains(to))
+                    result.Add(to);
+                if (result.Count >= count) break;
+            }
+            return result;
+        }
+
         /// <summary>提取（git fetch --prune --tags [remote]；remote 空 = 全部远程）。</summary>
         public void Fetch(string remote)
         {

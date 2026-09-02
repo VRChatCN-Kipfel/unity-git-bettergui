@@ -97,6 +97,7 @@ namespace KF.GitUI
         public const string BranchGroupLocal = "branch.groupLocal";
         public const string BranchGroupRemote = "branch.groupRemote";
         public const string BranchGroupTags = "branch.groupTags";
+        public const string BranchGroupRecent = "branch.groupRecent";
         public const string BranchCheckoutTagConfirm = "branch.checkoutTagConfirm"; // {0}=标签名
 
         // -- 分支面板右键动作 --

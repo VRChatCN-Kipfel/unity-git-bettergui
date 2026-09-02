@@ -1070,6 +1070,36 @@ namespace KF.GitUI
                 }
                 DeleteDir(abDir);
                 DeleteDir(abBare);
+
+                // 36) P2 reflog 最近分支（多次 checkout → RecentBranches 去重/排除当前）
+                var rfDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-reflog-repo");
+                DeleteDir(rfDir);
+                System.IO.Directory.CreateDirectory(rfDir);
+                var gitExeA = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExeA, "init -b main", rfDir, out var rfErr, out var _);
+                RunCli(gitExeA, "config user.name smoke", rfDir, out rfErr, out var _);
+                RunCli(gitExeA, "config user.email smoke@local", rfDir, out rfErr, out var _);
+                RunCli(gitExeA, "config commit.gpgsign false", rfDir, out rfErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(rfDir, "r.txt"), "r\n");
+                RunCli(gitExeA, "add r.txt", rfDir, out rfErr, out var _);
+                RunCli(gitExeA, "commit -m base", rfDir, out rfErr, out var _);
+                RunCli(gitExeA, "checkout -b feature", rfDir, out rfErr, out var _);
+                RunCli(gitExeA, "checkout -b hotfix", rfDir, out rfErr, out var _);
+                RunCli(gitExeA, "checkout main", rfDir, out rfErr, out var _);
+                using (var srf = GitSession.Open(rfDir))
+                {
+                    // reflog 原始序列：main,hotfix,feature（含当前 main——UI 层 Rebuild 已跳过 currentBranch）
+                    var recents = srf.RecentBranches(5);
+                    if (recents.Count == 0)
+                        throw new System.Exception("SMOKE FAIL: reflog recent empty");
+                    if (!recents.Contains("hotfix") || !recents.Contains("feature"))
+                        throw new System.Exception("SMOKE FAIL: reflog missing branches: " + string.Join(",", recents));
+                    // 去重：重复 checkout 同一分支只出现一次
+                    if (recents.Count != recents.Distinct().Count())
+                        throw new System.Exception("SMOKE FAIL: reflog duplicates");
+                    // UI 排除当前分支由 Rebuild 的 `b == currentBranch` 过滤承担（此处验证数据源含 main 属正常）
+                }
+                DeleteDir(rfDir);
             }
 
             EditorApplication.Exit(0);
