@@ -53,6 +53,8 @@ namespace KF.GitUI
                 [Keys.MenuRevertConfirm] = "Revert commit {0}?\n\nThis creates a new commit that undoes it.",
                 [Keys.MenuUncommit] = "Uncommit…",
                 [Keys.MenuUncommitConfirm] = "Undo commit {0}?\n\nSoft-resets HEAD so the changes return to the staging area.",
+                [Keys.MenuCherryPick] = "Cherry-Pick {0}…",
+                [Keys.MenuCherryPickConfirm] = "Apply commit {0} to the current branch?",
                 [Keys.MenuCheckout] = "Checkout…",
                 [Keys.MenuCheckoutConfirm] = "Checkout {0}?\n\nThis detaches HEAD from the current branch.",
                 [Keys.DialogOk] = "OK",

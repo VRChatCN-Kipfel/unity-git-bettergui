@@ -43,6 +43,8 @@ namespace KF.GitUI
         public const string MenuRevertConfirm = "menu.revert.confirm"; // {0}=短号
         public const string MenuUncommit = "menu.uncommit";
         public const string MenuUncommitConfirm = "menu.uncommit.confirm"; // {0}=短号
+        public const string MenuCherryPick = "menu.cherryPick"; // {0}=短号
+        public const string MenuCherryPickConfirm = "menu.cherryPick.confirm"; // {0}=短号
         public const string MenuCheckout = "menu.checkout";
         public const string MenuCheckoutConfirm = "menu.checkout.confirm"; // {0}=短号
         public const string DialogOk = "dialog.ok";

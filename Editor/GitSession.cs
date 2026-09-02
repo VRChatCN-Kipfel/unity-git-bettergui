@@ -717,6 +717,35 @@ namespace KF.GitUI
             RunOp("git fetch", new GitFetchTask(platform, remote).Configure(platform.ProcessManager));
         }
 
+        /// <summary>应用其它提交到当前分支（git cherry-pick &lt;hash&gt;；默认自动提交）。
+        /// cherry-pick 冲突是预期结果不抛异常（冲突状态由 LoadConflictPaths 判定，3-way 视图处理）；真失败才抛。</summary>
+        public void CherryPick(string commitHash)
+        {
+            var task = new GitCherryPickTask(platform, commitHash).Configure(platform.ProcessManager);
+            Prepare(task);
+            try
+            {
+                task.RunSynchronously();
+            }
+            catch (ProcessException ex)
+            {
+                var msg = (ex.Message ?? string.Empty) + "\n" + (task.Errors ?? string.Empty);
+                if (msg.Contains("CONFLICT", StringComparison.OrdinalIgnoreCase)
+                    || LoadConflictPathsQuietCount() > 0)
+                    return;
+                throw new InvalidOperationException("git cherry-pick failed:\n" + msg, ex);
+            }
+            if (!task.Successful)
+            {
+                var err = task.Errors;
+                if ((err ?? string.Empty).Contains("CONFLICT", StringComparison.OrdinalIgnoreCase)
+                    || LoadConflictPathsQuietCount() > 0)
+                    return;
+                throw new InvalidOperationException("git cherry-pick failed"
+                    + (string.IsNullOrEmpty(err) ? "" : ":\n" + err));
+            }
+        }
+
         // ---- M3 P1 remote 管理（api 四任务现成；入口 = BranchesPanel 空白右键「管理 Remotes…」） ----
 
         /// <summary>列出 remote 定义（git remote -v → GitRemote{name,url,function}）。</summary>

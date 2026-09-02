@@ -1100,6 +1100,65 @@ namespace KF.GitUI
                     // UI 排除当前分支由 Rebuild 的 `b == currentBranch` 过滤承担（此处验证数据源含 main 属正常）
                 }
                 DeleteDir(rfDir);
+
+                // 37) P2 Cherry-Pick：无冲突完成 + 冲突走 UU（3-way 入口）+ 菜单项
+                var cpDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-cherrypick-repo");
+                DeleteDir(cpDir);
+                System.IO.Directory.CreateDirectory(cpDir);
+                var gitExeB = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExeB, "init -b main", cpDir, out var cpErr, out var _);
+                RunCli(gitExeB, "config user.name smoke", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config user.email smoke@local", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config commit.gpgsign false", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config core.autocrlf false", cpDir, out cpErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(cpDir, "f.txt"), "base\n");
+                RunCli(gitExeB, "add f.txt", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "commit -m base", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "checkout -b feat", cpDir, out cpErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(cpDir, "f.txt"), "base\nfeat line\n");
+                RunCli(gitExeB, "commit -am feat-change", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "checkout main", cpDir, out cpErr, out var _);
+                using (var scp = GitSession.Open(cpDir))
+                {
+                    var featId = scp.LoadRefs().First(r => r.DisplayName == "feat").CommitId;
+                    // 无冲突 cherry-pick → 成功 + 新提交
+                    scp.CherryPick(featId);
+                    var cpLog = scp.LoadHistory(5);
+                    if (cpLog.Count != 2 || cpLog[0].Summary != "feat-change")
+                        throw new System.Exception("SMOKE FAIL: cherry-pick clean apply: "
+                            + string.Join(",", cpLog.Select(e => e.Summary)));
+                    // 菜单含 Cherry-Pick（fake log 行）
+                    var cpActs = GitWindow.BuildCommitContextActions(scp, cpLog, 0, () => { }).ToList();
+                    if (!cpActs.Any(a => a.Id == "cherrypick"))
+                        throw new System.Exception("SMOKE FAIL: cherry-pick menu missing");
+                }
+                // 冲突场景：独立仓（main 改 line2 + feat 改 line2 → cherry-pick 冲突）
+                DeleteDir(cpDir);
+                System.IO.Directory.CreateDirectory(cpDir);
+                RunCli(gitExeB, "init -b main", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config user.name smoke", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config user.email smoke@local", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config commit.gpgsign false", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "config core.autocrlf false", cpDir, out cpErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(cpDir, "f.txt"), "base\n");
+                RunCli(gitExeB, "add f.txt", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "commit -m base", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "checkout -b feat", cpDir, out cpErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(cpDir, "f.txt"), "base\nFEAT\n");
+                RunCli(gitExeB, "commit -am feat-change", cpDir, out cpErr, out var _);
+                RunCli(gitExeB, "checkout main", cpDir, out cpErr, out var _);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(cpDir, "f.txt"), "base\nMAIN\n");
+                RunCli(gitExeB, "commit -am main-change", cpDir, out cpErr, out var _);
+                using (var scp2 = GitSession.Open(cpDir))
+                {
+                    // feat 分支提交在 main 历史外 → 经 LoadRefs 取 feat 的 CommitId
+                    var featRef = scp2.LoadRefs().First(r => r.DisplayName == "feat");
+                    scp2.CherryPick(featRef.CommitId); // 与 MAIN 冲突
+                    var cpSt = scp2.LoadStatus();
+                    if (cpSt.Entries == null || !cpSt.Entries.Any(e => e.Unmerged))
+                        throw new System.Exception("SMOKE FAIL: cherry-pick conflict UU missing");
+                }
+                DeleteDir(cpDir);
             }
 
             EditorApplication.Exit(0);
@@ -1496,6 +1555,23 @@ namespace KF.GitUI
                 () => ConfirmRevert(session, e, onMutated));
             yield return new DelegateAction("checkout", I18n.L(I18n.Keys.MenuCheckout),
                 () => ConfirmCheckout(session, e, onMutated));
+            // M3 P2：Cherry-Pick（冲突走 3-way；非 HEAD 分支右键场景任意行可挑）
+            yield return new DelegateAction("cherrypick", I18n.L(I18n.Keys.MenuCherryPick, e.ShortID),
+                () => ConfirmCherryPick(session, e, onMutated));
+        }
+
+        private static void ConfirmCherryPick(GitSession session, GitLogEntry e, Action onMutated)
+        {
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MenuCherryPick, e.ShortID),
+                    I18n.L(I18n.Keys.MenuCherryPickConfirm, e.ShortID),
+                    I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            try
+            {
+                session.CherryPick(e.CommitID);
+                onMutated?.Invoke();
+            }
+            catch (Exception ex) { ErrorDialog(ex); }
         }
 
         private static void ConfirmUncommit(GitSession session, GitLogEntry e, Action onMutated,
