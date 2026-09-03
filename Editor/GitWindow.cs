@@ -900,6 +900,49 @@ namespace KF.GitUI
                 if (sshR.Function != GitRemoteFunction.Push || !sshR.Url.Contains("git@"))
                     throw new System.Exception("SMOKE FAIL: remote ssh push-only");
 
+                // 42) 多 hunk 文件真实 e2e（复测1 根因：big.txt 两处改动 → git diff HEAD → 切片 → apply --cached / -R）
+                var hkDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-hunkfile-repo");
+                DeleteDir(hkDir);
+                System.IO.Directory.CreateDirectory(hkDir);
+                var gitExeH = s.Platform.Environment.GitExecutablePath;
+                RunCli(gitExeH, "init -b main", hkDir, out var hkErr, out var _);
+                RunCli(gitExeH, "config user.name smoke", hkDir, out hkErr, out var _);
+                RunCli(gitExeH, "config user.email smoke@local", hkDir, out hkErr, out var _);
+                RunCli(gitExeH, "config commit.gpgsign false", hkDir, out hkErr, out var _);
+                RunCli(gitExeH, "config core.autocrlf false", hkDir, out hkErr, out var _);
+                var hkLines = new System.Collections.Generic.List<string>();
+                for (var i = 1; i <= 30; i++) hkLines.Add("big line " + i);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(hkDir, "big.txt"),
+                    string.Join("\n", hkLines) + "\n");
+                RunCli(gitExeH, "add big.txt", hkDir, out hkErr, out var _);
+                RunCli(gitExeH, "commit -m base", hkDir, out hkErr, out var _);
+                hkLines[4] = "big line 5 EDIT";
+                hkLines[19] = "big line 20 EDIT";
+                System.IO.File.WriteAllText(System.IO.Path.Combine(hkDir, "big.txt"),
+                    string.Join("\n", hkLines) + "\n");
+                using (var shk = GitSession.Open(hkDir))
+                {
+                    // 与 DiffViewer 双击一致：git diff HEAD -- path（U3）
+                    var headTask = GitDiffTask.Raw(shk.Platform, "HEAD -- " + GitDiffTask.JoinPaths(new[] { "big.txt" }))
+                        .Configure(shk.Platform.ProcessManager);
+                    var hkDiffH = headTask.RunSynchronously();
+                    if (string.IsNullOrEmpty(hkDiffH) || !hkDiffH.Contains("-big line 5") || !hkDiffH.Contains("-big line 20"))
+                        throw new System.Exception("SMOKE FAIL: hunkfile diff capture:\n" + hkDiffH);
+                    if (!GitPatchBuilder.HunkHasContext(hkDiffH, 0, 0))
+                        throw new System.Exception("SMOKE FAIL: hunkfile expected context");
+                    var hkPatchH = GitPatchBuilder.WriteHunkPatch(hkDiffH, 0, 0, hkDir);
+                    if (hkPatchH == null)
+                        throw new System.Exception("SMOKE FAIL: hunkfile patch slice null");
+                    var hkStH = shk.LoadStatus();
+                    if (hkStH.Entries == null || hkStH.Entries.Count != 1 || hkStH.Entries[0].Staged)
+                        throw new System.Exception("SMOKE FAIL: hunkfile baseline unstaged");
+                    shk.ApplyHunk(hkDiffH, 0, 0, GitApplyMode.Stage);
+                    var hkSt2H = shk.LoadStatus();
+                    if (hkSt2H.Entries.Count != 1 || !hkSt2H.Entries[0].Staged)
+                        throw new System.Exception($"SMOKE FAIL: hunkfile stage: patch={System.IO.File.ReadAllText(hkPatchH)}");
+                }
+                DeleteDir(hkDir);
+
                 // 32) P1 remote 管理（api 四任务：add/set-url/list/remove）+ 空白右键入口
                 var rmDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-remote-repo");
                 DeleteDir(rmDir);
