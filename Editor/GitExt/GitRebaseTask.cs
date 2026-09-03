@@ -7,6 +7,10 @@ namespace KF.GitUI
 {
     /// <summary>
     /// git rebase（非交互式，M2-SOLUTION §6 固化）：rebase &lt;branch&gt;。
+    /// 编辑器阻塞防护：由 GitSession.Prepare 对全部 git 任务统一设置 GIT_EDITOR=true（Git for Windows 的
+    /// sh 内建 true 立即成功，不弹编辑器）——2026-10 M3 人工测试实测：rebase --continue 默认会启动编辑器，
+    /// 无抑制时 Unity 主线程同步等待 → Hold on busy 死锁 3+ 分钟。
+    /// 注意：git 2.51 不支持 rebase --no-edit（"unknown option"），必须用环境变量方案。
     /// 冲突走 stderr（ProcessException 由 RunOp 包装）；进行中状态可由 status 首行
     /// "## HEAD (no branch)" + UU 条目判定（M3-SOLUTION §1.1-3 实测）。
     /// 交互式 rebase 序列编辑器 → M4（ROADMAP）。

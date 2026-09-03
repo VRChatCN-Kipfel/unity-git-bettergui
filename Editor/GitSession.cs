@@ -124,11 +124,17 @@ namespace KF.GitUI
         /// 会话内 git 任务通用准备：Configure 之后把进程工作目录钉到仓库根。
         /// api 的 ProcessEnvironment.Configure 未设置 WorkingDirectory（源码注释掉），
         /// 默认会落到编辑器工程目录/Unity cwd —— 仓库 ≠ 工程目录时必须钉住（如端到端冒烟仓库）。
+        /// 同时统一设 GIT_EDITOR=true：任何会启动编辑器的 git 命令（rebase --continue、cherry-pick、
+        /// commit 无 -m 等）都禁用编辑器——否则 git 同步等待编辑器退出 → Unity 主线程 Hold on 死锁
+        /// （2026-10 M3 人工测试实测 3+ 分钟；git for windows 的 sh 内建 true 立即成功）。
         /// </summary>
         private void Prepare(IProcessTask task)
         {
             if (task?.Wrapper?.StartInfo != null)
+            {
                 task.Wrapper.StartInfo.WorkingDirectory = projectPath;
+                task.Wrapper.StartInfo.EnvironmentVariables["GIT_EDITOR"] = "true";
+            }
         }
 
         /// <summary>加载提交历史（含 parents 全量 + 文件变更列表），返回前强制拓扑序。</summary>
@@ -1003,6 +1009,7 @@ namespace KF.GitUI
         /// <summary>rebase 冲突继续（git rebase --continue）。</summary>
         public void RebaseContinue()
         {
+            // 编辑器抑制由 Prepare 统一设 GIT_EDITOR=true（git 2.51 无 rebase --no-edit）
             RunOp("git rebase --continue",
                 new GitRebaseTask(platform, "--continue").Configure(platform.ProcessManager));
         }

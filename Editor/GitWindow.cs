@@ -780,6 +780,23 @@ namespace KF.GitUI
                     var rbAfter = sr.LoadStatus();
                     if (rbAfter.LocalBranch != "topic" || rbAfter.Entries.Count != 0)
                         throw new System.Exception("SMOKE FAIL: rebase abort restore: lb=" + rbAfter.LocalBranch);
+                    // continue 路径（防编辑器死锁：GIT_EDITOR=true 由 Prepare 注入；冲突解决+add → continue 须无编辑器完成）
+                    sr.Rebase("main");
+                    var rbConflict2 = sr.LoadStatus();
+                    if (rbConflict2.Entries == null || !rbConflict2.Entries.Any(e => e.Unmerged))
+                        throw new System.Exception("SMOKE FAIL: rebase conflict2 missing");
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(rbDir, "f.txt"), "a\nRESOLVED\nc\n");
+                    sr.Stage(new[] { "f.txt" });
+                    sr.RebaseContinue();
+                    if (sr.IsRebaseInProgressQuiet())
+                        throw new System.Exception("SMOKE FAIL: rebase continue should finish");
+                    var rbDone = sr.LoadStatus();
+                    if (rbDone.LocalBranch != "topic" || rbDone.Entries.Count != 0)
+                        throw new System.Exception("SMOKE FAIL: rebase continue done state: lb=" + rbDone.LocalBranch);
+                    var rbHead = sr.LoadHistory(1);
+                    if (rbHead.Count != 1 || rbHead[0].Summary != "topic-change")
+                        throw new System.Exception("SMOKE FAIL: rebase continue head summary="
+                            + string.Join(",", rbHead.Select(e => e.Summary)));
                 }
                 DeleteDir(rbDir);
 
