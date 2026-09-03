@@ -108,7 +108,6 @@ namespace KF.GitUI
                 [Keys.BranchGroupLocal] = "Local",
                 [Keys.BranchGroupRemote] = "Remotes",
                 [Keys.BranchGroupTags] = "Tags",
-                [Keys.BranchGroupRecent] = "Recent branches",
                 [Keys.BranchCheckoutTagConfirm] = "Checkout tag {0}? This detaches HEAD.",
                 // -- 分支面板右键动作 --
                 [Keys.BranchCtxCheckout] = "Checkout",

@@ -881,6 +881,24 @@ namespace KF.GitUI
                 }
                 DeleteDir(unDir);
 
+                // 41) GitRemoteListTaskEx 本地路径解析（M3 人工测试坑：上游 processor 对 "E:\..." URL 的 SSH 分支 NRE）
+                var remoteParse = GitRemoteListTaskEx.Parse(
+                    "origin\tE:\\Users\\demo\\repo.git (fetch)\n"
+                    + "origin\tE:\\Users\\demo\\repo.git (push)\n"
+                    + "upstream\thttps://github.com/a/b.git (fetch)\n"
+                    + "ssh\tgit@github.com:c/d.git (push)\n");
+                if (remoteParse.Count != 3)
+                    throw new System.Exception($"SMOKE FAIL: remote parse count={remoteParse.Count} expect 3");
+                var originR = remoteParse.First(r => r.Name == "origin");
+                if (!originR.Url.Contains("repo.git") || originR.Function != GitRemoteFunction.Both)
+                    throw new System.Exception($"SMOKE FAIL: remote origin url/function {originR.Url}/{originR.Function}");
+                var upstreamR = remoteParse.First(r => r.Name == "upstream");
+                if (upstreamR.Function != GitRemoteFunction.Fetch)
+                    throw new System.Exception("SMOKE FAIL: remote upstream fetch-only");
+                var sshR = remoteParse.First(r => r.Name == "ssh");
+                if (sshR.Function != GitRemoteFunction.Push || !sshR.Url.Contains("git@"))
+                    throw new System.Exception("SMOKE FAIL: remote ssh push-only");
+
                 // 32) P1 remote 管理（api 四任务：add/set-url/list/remove）+ 空白右键入口
                 var rmDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(s.ProjectPath), "e2e-remote-repo");
                 DeleteDir(rmDir);
@@ -1553,12 +1571,16 @@ namespace KF.GitUI
                 () => OpenFile(session, item));
             yield return new DelegateAction("copy.path", I18n.L(I18n.Keys.MenuCopyPath),
                 () => GUIUtility.systemCopyBuffer = (item.OpsPath ?? item.Path));
-            // M3 P2：Blame（工作区文件；目录无意义）
+            // M3 P2：Blame（工作区文件；目录无意义；未跟踪文件 git blame 会 fatal "no such path in HEAD" → 禁用并提示）
             if (!readOnly && !item.IsDirectory && session != null)
             {
                 var blamePath = item.OpsPath ?? item.Path;
+                var untracked = item.Entry.HasValue && item.Entry.Value.Untracked;
                 yield return new DelegateAction("blame", I18n.L(I18n.Keys.MenuBlame),
-                    () => BlameWindow.Open(session, blamePath));
+                    () => BlameWindow.Open(session, blamePath))
+                {
+                    Enabled = !untracked,
+                };
             }
         }
 
@@ -1587,6 +1609,72 @@ namespace KF.GitUI
             CompareWindow.Open(session, e.CommitID);
         }
 
+        /// <summary>提交详情树双击：显示该选中提交对该文件的改动（该提交 vs 其父；root 提交=全新增）。</summary>
+        private void OpenCommitFileDiff(ChangeItem item)
+        {
+            if (session == null || item == null || item.IsDirectory) return;
+            var row = graphTable != null ? graphTable.SelectedRow : -1;
+            if (row < 0 || row >= logEntries.Count) return;
+            var commit = logEntries[row];
+            var path = item.OpsPath ?? item.Path;
+            var sessionCopy = session;
+            var title = commit.ShortID + " " + (commit.Summary ?? "") + " — " + path;
+            var ctx = System.Threading.SynchronizationContext.Current;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    List<DiffRow> rows;
+                    string output;
+                    if (commit.Parents.Count == 0)
+                    {
+                        // root 提交：全树 vs 空（该文件全部为新增）
+                        output = null;
+                        rows = BuildUntrackedRows(sessionCopy, path);
+                    }
+                    else
+                    {
+                        // git diff <parent> <commit> -- path
+                        var task = GitDiffTask.Raw(sessionCopy.Platform,
+                                commit.Parents[0] + " " + commit.CommitID + " -- " + GitDiffTask.JoinPaths(new[] { path }))
+                            .Configure(sessionCopy.Platform.ProcessManager);
+                        output = task.RunSynchronously();
+                        rows = new List<DiffRow>();
+                        if (task.Successful && !string.IsNullOrEmpty(output))
+                            rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
+                        if (rows.Count == 0)
+                        {
+                            // 该路径在选中提交无此文件的改动（如提交里没动它）——显示空态提示
+                            rows = new List<DiffRow>
+                            {
+                                new DiffRow { Kind = DiffRowKind.Context, RichText = DiffRichText.BuildPlainLine("(no change to this file in this commit)") }
+                            };
+                        }
+                    }
+                    ctx?.Post(_ => DiffViewer.Open(sessionCopy, title, output, rows, false), null);
+                }
+                catch (Exception ex)
+                {
+                    ctx?.Post(_ => Debug.LogWarning("[gitui] open commit diff failed: " + ex.Message), null);
+                }
+            });
+        }
+
+        /// <summary>整文件新增视图（root 提交 / 未跟踪文件双击）：读工作区内容为全 New 行。</summary>
+        private static List<DiffRow> BuildUntrackedRows(GitSession session, string path)
+        {
+            var full = System.IO.Path.Combine(session.ProjectPath, path.Replace('/', System.IO.Path.DirectorySeparatorChar));
+            var lines = new List<string>();
+            if (System.IO.File.Exists(full))
+                lines = new List<string>(System.IO.File.ReadAllLines(full));
+            var df = new DiffFile { OldPath = string.Empty, NewPath = path, IsNew = true };
+            var hunk = new DiffHunk { OldStart = 0, OldCount = 0, NewStart = 1, NewCount = lines.Count };
+            for (var i = 0; i < lines.Count; i++)
+                hunk.Lines.Add(new DiffLine { Kind = DiffLineKind.New, Content = lines[i], LineNumber = i + 1 });
+            df.Hunks.Add(hunk);
+            return DiffRows.Build(new List<DiffFile> { df }, 0);
+        }
+
         /// <summary>M3：双击文件联动（ChangesTree.ItemChosen）——HEAD vs 工作区 单文件 diff → DiffViewer。</summary>
         private void OpenFileDiff(ChangeItem item)
         {
@@ -1606,16 +1694,7 @@ namespace KF.GitUI
                     {
                         // 未跟踪文件：git diff 无输出 → 整文件"新增"视图（读工作区内容）
                         output = null;
-                        var full = System.IO.Path.Combine(sessionCopy.ProjectPath, path.Replace('/', System.IO.Path.DirectorySeparatorChar));
-                        var lines = new List<string>();
-                        if (System.IO.File.Exists(full))
-                            lines = new List<string>(System.IO.File.ReadAllLines(full));
-                        var df = new DiffFile { OldPath = string.Empty, NewPath = path, IsNew = true };
-                        var hunk = new DiffHunk { OldStart = 0, OldCount = 0, NewStart = 1, NewCount = lines.Count };
-                        for (var i = 0; i < lines.Count; i++)
-                            hunk.Lines.Add(new DiffLine { Kind = DiffLineKind.New, Content = lines[i], LineNumber = i + 1 });
-                        df.Hunks.Add(hunk);
-                        rows = DiffRows.Build(new List<DiffFile> { df }, 0);
+                        rows = BuildUntrackedRows(sessionCopy, path);
                     }
                     else
                     {
@@ -2309,8 +2388,8 @@ namespace KF.GitUI
             // 提交详情树轻量右键（Open / Copy Path；只读无暂存/撤销）
             changesTree.ContextActionProvider = item =>
                 BuildFileContextActions(session, item, null, true, null);
-            // M3：双击文件 → DiffViewer（HEAD vs 工作区 单文件）
-            changesTree.ItemChosen += OpenFileDiff;
+            // 提交详情树（只读）：双击文件 = 该提交 vs 其父的 diff（JetBrains 点击历史文件语义）
+            changesTree.ItemChosen += OpenCommitFileDiff;
             inner.Add(changesTree);
             var detailScroll = new ScrollView(ScrollViewMode.Vertical);
             detailText = new Label(I18n.L(I18n.Keys.SelectACommit));

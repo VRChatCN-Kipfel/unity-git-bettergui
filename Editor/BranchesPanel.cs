@@ -29,7 +29,6 @@ namespace KF.GitUI
         private GitSession session;
         private Action onChanged;
         private List<GitSession.GitRefInfo> allRefs = new List<GitSession.GitRefInfo>();
-        private List<string> recentBranches = new List<string>();
         private string currentBranch = string.Empty;
         private int currentAhead;
         private int currentBehind;
@@ -91,8 +90,6 @@ namespace KF.GitUI
                 currentBranch = status.LocalBranch ?? string.Empty;
                 currentAhead = status.Ahead;
                 currentBehind = status.Behind;
-                // M3 P2：最近签出分支（reflog 单进程；失败静默）
-                recentBranches = session.RecentBranches(8);
             }
             catch (Exception ex)
             {
@@ -116,28 +113,6 @@ namespace KF.GitUI
         {
             scroll.Clear();
             if (session == null) return;
-
-            // M3 P2：最近签出分支节（reflog；点击=直接 checkout 该分支）
-            if (recentBranches.Count > 0)
-            {
-                var recentTitle = new Label(I18n.L(I18n.Keys.BranchGroupRecent));
-                recentTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-                recentTitle.style.paddingTop = 2;
-                recentTitle.style.paddingLeft = 4;
-                recentTitle.tooltip = "Recently checked out branches (from reflog) — click to switch";
-                scroll.Add(recentTitle);
-                foreach (var b in recentBranches)
-                {
-                    if (b == currentBranch) continue; // 当前分支不重复显示
-                    var branchName = b;
-                    var row = new Button(() => RunOp(session, () => session.Checkout(branchName), onChanged, ShowError))
-                    {
-                        text = "» " + branchName,
-                    };
-                    row.style.unityTextAlign = TextAnchor.MiddleLeft;
-                    scroll.Add(row);
-                }
-            }
 
             var filtered = ApplyFilter(allRefs, filterField.value);
             var locals = filtered.Where(r => r.Type == GitSession.RefType.Local || r.Type == GitSession.RefType.Head).ToList();

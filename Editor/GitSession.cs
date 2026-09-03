@@ -759,15 +759,16 @@ namespace KF.GitUI
 
         // ---- M3 P1 remote 管理（api 四任务现成；入口 = BranchesPanel 空白右键「管理 Remotes…」） ----
 
-        /// <summary>列出 remote 定义（git remote -v → GitRemote{name,url,function}）。</summary>
+        /// <summary>列出 remote 定义（git remote -v → GitRemote{name,url,function}）。
+        /// 用自研 GitRemoteListTaskEx（上游 RemoteListOutputProcessor 对本地路径 URL 会 NRE）。</summary>
         public List<GitRemote> LoadRemotes()
         {
-            var task = new GitRemoteListTask(platform).Configure(platform.ProcessManager);
+            var task = new GitRemoteListTaskEx(platform).Configure(platform.ProcessManager);
             Prepare(task);
-            var result = task.RunSynchronously();
-            if (!task.Successful || result == null)
+            var output = task.RunSynchronously();
+            if (!task.Successful || output == null)
                 throw new InvalidOperationException("git remote list failed: " + task.Errors);
-            return result;
+            return GitRemoteListTaskEx.Parse(output);
         }
 
         /// <summary>新建 remote（git remote add &lt;name&gt; &lt;url&gt;）。</summary>
