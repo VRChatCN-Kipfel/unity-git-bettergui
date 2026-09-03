@@ -46,6 +46,8 @@ namespace KF.GitUI
         {
             // 每次 CreateInstance 新窗口：避免同 title 复用旧实例导致数据/状态残留（M3 人工测试：二次双击空白）
             var w = CreateInstance<DiffViewer>();
+            // titleContent：窗口标题栏（CreateInstance 默认是类名，必须显式设；GetWindow 时代靠 GetWindow(title) 自动带）
+            w.titleContent = new GUIContent(title);
             w.windowTitle = title;
             w.rows = rows ?? new List<DiffRow>();
             w.session = session;
@@ -76,6 +78,17 @@ namespace KF.GitUI
         {
             if (scrollView == null) return;
             scrollView.Clear();
+
+            if (rows == null || rows.Count == 0)
+            {
+                // 空 diff（文件无变更/已提交）→ 提示而非纯空白（M3 人工测试：双击已提交文件会得到空 rows）
+                var empty = new Label(I18n.L(I18n.Keys.DiffNoChanges));
+                empty.style.paddingLeft = 6;
+                empty.style.paddingTop = 6;
+                empty.style.color = new Color(0.55f, 0.55f, 0.6f, 1f);
+                scrollView.Add(empty);
+                return;
+            }
 
             foreach (var row in rows)
             {

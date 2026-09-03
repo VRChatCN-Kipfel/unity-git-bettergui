@@ -6,9 +6,11 @@ namespace Unity.VersionControl.Git.Tasks
     public class GitLogTask : GitProcessListTask<GitLogEntry>
     {
         private const string TaskName = "git log";
-        // --all：多分支图谱必须包含所有 refs 的提交（M3 人工测试实证：缺它则 feature/alpha 等独立分支
-        // 不在全量窗口，All-branches 图谱画不全、分支筛选返回空）。revision 过滤由上层内存祖先过滤承担。
-        private const string baseArguments = @"-c i18n.logoutputencoding=utf8 -c core.quotepath=false log --all --pretty=format:""%H%n%P%n%aN%n%aE%n%aI%n%cN%n%cE%n%cI%n%B---GHUBODYEND---"" --name-status";
+        // --branches --tags --remotes：多分支图谱必须包含所有本地分支+标签+远程跟踪分支的提交
+        //（M3 人工测试实证：缺它则 feature/alpha 等独立分支 + origin/* 不在全量窗口，图谱画不全、筛选空）。
+        // 不能用 --all：--all 含 refs/stash，会把 stash 的 WIP 提交混入图谱（2026-10 实测污染渲染）。
+        // 三组组合与 --all 的提交集一致（rev-list --count 实测相等），但不含 stash。
+        private const string baseArguments = @"-c i18n.logoutputencoding=utf8 -c core.quotepath=false log --branches --tags --remotes --pretty=format:""%H%n%P%n%aN%n%aE%n%aI%n%cN%n%cE%n%cI%n%B---GHUBODYEND---"" --name-status";
         private readonly string arguments;
 
         public GitLogTask(IPlatform platform,

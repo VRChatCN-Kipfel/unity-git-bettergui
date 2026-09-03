@@ -94,6 +94,7 @@ namespace KF.GitUI
         public const string DiffStageHunk = "diff.stageHunk";
         public const string DiffRevertHunk = "diff.revertHunk";
         public const string DiffBinary = "diff.binaryFiles";
+        public const string DiffNoChanges = "diff.noChanges";
         public const string MenuCompareBranch = "menu.compareWithBranch";
         public const string MenuCreateTag = "menu.createTag";
         public const string CreateTagPrompt = "tag.prompt";

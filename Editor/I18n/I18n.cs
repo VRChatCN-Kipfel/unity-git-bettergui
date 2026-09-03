@@ -96,6 +96,7 @@ namespace KF.GitUI
                 [Keys.DiffStageHunk] = "Stage hunk",
                 [Keys.DiffRevertHunk] = "Revert hunk (discard changes)",
                 [Keys.DiffBinary] = "Binary files differ",
+                [Keys.DiffNoChanges] = "(no changes for this file at this scope)",
                 [Keys.MenuCompareBranch] = "Compare with Branch…",
                 [Keys.MenuCreateTag] = "Create Tag…",
                 [Keys.CreateTagPrompt] = "Tag name:",
