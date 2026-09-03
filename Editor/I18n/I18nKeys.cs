@@ -63,6 +63,10 @@ namespace KF.GitUI
         public const string CommitButton = "commit.commit";
         public const string CommitRefresh = "commit.refresh";
         public const string CommitClean = "commit.clean";
+        public const string CommitNoChanges = "commit.noChanges";
+        public const string CommitNothingStaged = "commit.nothingStaged";
+        public const string CommitStagedGroup = "commit.stagedGroup";
+        public const string CommitChangesGroup = "commit.changesGroup";
         public const string CommitGpgHint = "commit.gpgHint";
 
         // M3 P1 提交模板/最近消息
@@ -89,6 +93,7 @@ namespace KF.GitUI
         // M3 hunk 操作菜单
         public const string DiffStageHunk = "diff.stageHunk";
         public const string DiffRevertHunk = "diff.revertHunk";
+        public const string DiffBinary = "diff.binaryFiles";
         public const string MenuCompareBranch = "menu.compareWithBranch";
         public const string MenuCreateTag = "menu.createTag";
         public const string CreateTagPrompt = "tag.prompt";
@@ -139,6 +144,10 @@ namespace KF.GitUI
         public const string BranchCtxCheckoutAndRebase = "branch.ctx.checkoutAndRebase"; // {0}=当前
         public const string BranchCtxRebaseOntoUpstream = "branch.ctx.rebaseOntoUpstream"; // {0}=上游
         public const string RebaseConflictHint = "rebase.conflictHint"; // {0}=冲突文件数
+        public const string MergeConflictHint = "merge.conflictHint"; // {0}=冲突文件数
+        public const string ConflictHint = "conflict.hint"; // {0}=冲突文件数
+        public const string RebaseInProgress = "rebase.inProgress";
+        public const string MergeInProgress = "merge.inProgress";
         public const string RebaseContinue = "rebase.continue";
         public const string RebaseAbort = "rebase.abort";
 

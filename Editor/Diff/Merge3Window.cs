@@ -77,8 +77,9 @@ namespace KF.GitUI
 
             if (conflictPaths.Count == 0)
             {
-                rootVisualElement.Add(new Label(conflictPaths.Count == 0 && !string.IsNullOrEmpty(error)
-                    ? error : I18n.L(I18n.Keys.Merge3NoConflicts)));
+                // 全部解决（或本就无冲突）：仍保留操作条——merge/rebase 完成或中止前按钮不消失（用户要求）
+                rootVisualElement.Add(new Label(I18n.L(I18n.Keys.Merge3AllResolved)));
+                rootVisualElement.Add(BuildOperationBar());
                 return;
             }
 
@@ -115,7 +116,13 @@ namespace KF.GitUI
             split.Add(theirsPane);
             rootVisualElement.Add(split);
 
-            // 操作条
+            // 操作条（Accept/导航 + Abort/Continue；空态也保留以便反悔）
+            rootVisualElement.Add(BuildOperationBar());
+        }
+
+        /// <summary>操作条：Accept Yours/Theirs + ‹› 导航 + Abort（merge/rebase 通吃）+ rebase 时 Continue。</summary>
+        private VisualElement BuildOperationBar()
+        {
             var ops = new VisualElement();
             ops.style.flexDirection = FlexDirection.Row;
             ops.style.paddingTop = 4;
@@ -138,7 +145,7 @@ namespace KF.GitUI
                 var cont = new Button(ContinueRebase) { text = I18n.L(I18n.Keys.RebaseContinue) };
                 ops.Add(cont);
             }
-            rootVisualElement.Add(ops);
+            return ops;
         }
 
         private void AbortOperation()

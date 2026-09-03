@@ -99,7 +99,7 @@ namespace KF.GitUI
 
             if (f.IsBinary)
             {
-                rows.Add(new DiffRow { Kind = DiffRowKind.Binary, RichText = "Binary files differ" });
+                rows.Add(new DiffRow { Kind = DiffRowKind.Binary, RichText = DiffRichText.BuildPlainLine(I18n.L(I18n.Keys.DiffBinary)) });
                 return;
             }
 

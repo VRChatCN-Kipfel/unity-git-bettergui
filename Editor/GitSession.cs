@@ -654,6 +654,18 @@ namespace KF.GitUI
             catch { return false; }
         }
 
+        /// <summary>merge 进行中（.git/MERGE_HEAD 存在；merge 冲突解决但未 commit 时也 true）。
+        /// 用于冲突徽标持续显示（用户要求：完成/中止前按钮不消失）。失败静默 false。</summary>
+        public bool IsMergeInProgressQuiet()
+        {
+            try
+            {
+                var p = System.IO.Path.Combine(projectPath, ".git", "MERGE_HEAD");
+                return System.IO.File.Exists(p);
+            }
+            catch { return false; }
+        }
+
         // ---- M3 P1 提交模板/最近消息 ----
 
         /// <summary>最近提交消息（git log -N --pretty=format:%B，`\n\n` 分隔 summary/body；最多 N 条）。

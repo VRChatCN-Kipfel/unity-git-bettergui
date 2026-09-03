@@ -25,6 +25,7 @@ namespace KF.GitUI
         private GitSession session;
         private string diffOutput;
         private bool worktreeMode;
+        private Action onWorktreeMutated; // 工作区被 hunk 操作改动后的回调（主窗口刷新删除树等）
 
         /// <summary>纯查看（两 ref 比较 / 提交详情）：无 hunk 操作。</summary>
         public static void Open(string title, List<DiffRow> rows)
@@ -36,14 +37,21 @@ namespace KF.GitUI
         public static void Open(GitSession session, string title, string diffOutput,
             List<DiffRow> rows, bool worktreeMode)
         {
-            var w = GetWindow<DiffViewer>(true, title);
+            Open(session, title, diffOutput, rows, worktreeMode, null);
+        }
+
+        /// <summary>工作区视图 + 操作成功回调（hunk stage/revert 后主窗口同步刷新工作区树）。</summary>
+        public static void Open(GitSession session, string title, string diffOutput,
+            List<DiffRow> rows, bool worktreeMode, Action onWorktreeMutated)
+        {
+            // 每次 CreateInstance 新窗口：避免同 title 复用旧实例导致数据/状态残留（M3 人工测试：二次双击空白）
+            var w = CreateInstance<DiffViewer>();
             w.windowTitle = title;
             w.rows = rows ?? new List<DiffRow>();
             w.session = session;
             w.diffOutput = diffOutput;
             w.worktreeMode = worktreeMode;
-            // OnEnable 在 GetWindow 首次创建时已跑（rows 当时为空）→ 赋值后显式重建，否则窗口空白
-            w.RebuildRows();
+            w.onWorktreeMutated = onWorktreeMutated;
             w.Show();
         }
 
@@ -81,7 +89,8 @@ namespace KF.GitUI
                     var sessionCopy = session;
                     var diffCopy = diffOutput;
                     GitContextMenu.Attach(el, () =>
-                        BuildHunkActions(sessionCopy, diffCopy, fileIndex, hunkIndex, RefreshData, ShowError));
+                        BuildHunkActions(sessionCopy, diffCopy, fileIndex, hunkIndex,
+                            () => { RefreshData(); onWorktreeMutated?.Invoke(); }, ShowError));
                 }
                 scrollView.Add(el);
             }
