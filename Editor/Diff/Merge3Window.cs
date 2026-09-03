@@ -51,6 +51,7 @@ namespace KF.GitUI
             try
             {
                 var st = session.LoadStatus();
+                // 目录级检测：rebase 解决完冲突(0 unmerged)未 continue 时仍判 rebase 中（Continue 按钮不消失）
                 rebaseMode = session.IsRebaseInProgressQuiet();
                 conflictPaths = session.LoadConflictPaths();
             }
@@ -294,7 +295,9 @@ namespace KF.GitUI
                 if (conflictPaths.Count == 0)
                 {
                     // 全部解决 → 提示继续 merge/rebase 或完成；通知主窗口刷新（勾选树+状态）
-                    headerLabel.text = I18n.L(I18n.Keys.Merge3AllResolved);
+                    headerLabel.text = rebaseMode
+                        ? I18n.L(I18n.Keys.Merge3AllResolvedRebase)
+                        : I18n.L(I18n.Keys.Merge3AllResolvedMerge);
                     oursLabel.text = "";
                     theirsLabel.text = "";
                     onResolved?.Invoke();

@@ -648,6 +648,13 @@ namespace KF.GitUI
         {
             try
             {
+                // git 标准判定：.git/rebase-merge 或 rebase-apply 目录存在 = rebase 进行中
+                // （不依赖冲突数——解决完冲突(0 unmerged)但未 continue 时仍是 rebase 中，
+                //   这才符合用户"完成/中止前按钮不消失"的语义）。失败时退回 status 解析。
+                var gitDir = System.IO.Path.Combine(projectPath, ".git");
+                if (System.IO.Directory.Exists(System.IO.Path.Combine(gitDir, "rebase-merge"))
+                    || System.IO.Directory.Exists(System.IO.Path.Combine(gitDir, "rebase-apply")))
+                    return true;
                 var st = LoadStatus();
                 return AnalyzeRebaseState(st, out var inR, out var _) && inR;
             }

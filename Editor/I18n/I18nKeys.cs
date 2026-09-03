@@ -161,6 +161,8 @@ namespace KF.GitUI
         public const string Merge3AcceptTheirs = "merge3.acceptTheirs";
         public const string Merge3RebaseSwapNote = "merge3.rebaseSwapNote";
         public const string Merge3AllResolved = "merge3.allResolved";
+        public const string Merge3AllResolvedMerge = "merge3.allResolvedMerge";
+        public const string Merge3AllResolvedRebase = "merge3.allResolvedRebase";
         public const string MergeAbort = "merge3.abort";
         public const string MergeAbortConfirm = "merge3.abortConfirm";
 

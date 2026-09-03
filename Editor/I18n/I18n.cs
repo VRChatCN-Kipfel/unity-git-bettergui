@@ -157,6 +157,8 @@ namespace KF.GitUI
                 [Keys.Merge3AcceptTheirs] = "Accept Theirs",
                 [Keys.Merge3RebaseSwapNote] = "[rebase: Yours/Theirs swapped per git semantics]",
                 [Keys.Merge3AllResolved] = "All conflicts resolved — commit (merge) or continue (rebase)",
+                [Keys.Merge3AllResolvedMerge] = "All conflicts resolved — commit on the Commit page to finish the merge (Abort still available)",
+                [Keys.Merge3AllResolvedRebase] = "All conflicts resolved — press Continue Rebase to finish, or Abort to cancel",
                 [Keys.MergeAbort] = "Abort",
                 [Keys.MergeAbortConfirm] = "Abort the in-progress merge/rebase and return to the pre-operation state?",
                 [Keys.RemoteManageTitle] = "Manage Remotes",

@@ -2150,6 +2150,10 @@ namespace KF.GitUI
                             : I18n.L(I18n.Keys.ConflictHint, paths.Count);
                     conflictBadge.text = label;
                     conflictBadge.style.display = DisplayStyle.Flex;
+                    // 0 冲突 = 已全部解决、等待 commit/continue → 绿色（在途可继续）；仍有冲突 → 红
+                    conflictBadge.style.backgroundColor = paths.Count > 0
+                        ? new Color(0.85f, 0.30f, 0.30f, 1f)
+                        : new Color(0.20f, 0.65f, 0.28f, 1f);
                     conflictBadge.tooltip = paths.Count > 0 ? string.Join("\n", paths)
                         : inRebase ? I18n.L(I18n.Keys.RebaseInProgress) : I18n.L(I18n.Keys.MergeInProgress);
                 }
