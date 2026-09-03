@@ -74,6 +74,7 @@ namespace KF.GitUI
                 [Keys.CommitClean] = "Working tree clean",
                 [Keys.CommitNoChanges] = "(no unstaged changes)",
                 [Keys.CommitNothingStaged] = "Nothing staged — stage files first (check the boxes below).",
+                [Keys.CommitConflictInProgress] = "Merge/rebase in progress — resolve all conflicts and stage the resolved files first.",
                 [Keys.CommitStagedGroup] = "Staged",
                 [Keys.CommitChangesGroup] = "Changes",
                 [Keys.CommitGpgHint] = "GPG signing failed — check gpg-agent / private key, or disable signing.",

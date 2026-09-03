@@ -1570,13 +1570,30 @@ namespace KF.GitUI
         {
             var summary = msgSummary.value.Trim();
             if (summary.Length == 0) return;
-            // 前后端双管齐下：点击时实际计算是否有需要变更（用户拍板 2026-10）
+            // 前后端双管齐下：点击时实际计算是否有需要变更（用户拍板 2026-10）。
+            // 强制重载最新状态：3-way 冲突解决（onResolved 异步刷新）后 workingEntries 可能还是旧缓存
+            // → 这里同步 LoadStatus 拿真实 staged（M3 人工测试：解决完冲突立刻提交被 Nothing staged 拦下的根因）。
             var anyStaged = false;
-            foreach (var en in workingEntries)
-                if (en.Staged) { anyStaged = true; break; }
+            try
+            {
+                if (session != null)
+                {
+                    var fresh = session.LoadStatus(); // GitStatus 是 struct，直接取值（非 Nullable）
+                    if (fresh.Entries != null)
+                    {
+                        foreach (var en in fresh.Entries)
+                            if (en.Staged) { anyStaged = true; break; }
+                    }
+                }
+            }
+            catch { anyStaged = false; }
             if (!anyStaged)
             {
-                SetCommitError(I18n.L(I18n.Keys.CommitNothingStaged));
+                // 区分提示：merge/rebase 进行中 → 引导完成冲突流程；否则 generic Nothing staged
+                if (session != null && (session.IsMergeInProgressQuiet() || session.IsRebaseInProgressQuiet()))
+                    SetCommitError(I18n.L(I18n.Keys.CommitConflictInProgress));
+                else
+                    SetCommitError(I18n.L(I18n.Keys.CommitNothingStaged));
                 return;
             }
             commitButton.SetEnabled(false);

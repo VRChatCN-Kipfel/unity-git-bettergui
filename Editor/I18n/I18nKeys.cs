@@ -65,6 +65,7 @@ namespace KF.GitUI
         public const string CommitClean = "commit.clean";
         public const string CommitNoChanges = "commit.noChanges";
         public const string CommitNothingStaged = "commit.nothingStaged";
+        public const string CommitConflictInProgress = "commit.conflictInProgress";
         public const string CommitStagedGroup = "commit.stagedGroup";
         public const string CommitChangesGroup = "commit.changesGroup";
         public const string CommitGpgHint = "commit.gpgHint";
