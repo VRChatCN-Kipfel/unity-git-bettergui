@@ -1,7 +1,7 @@
 {
   "name": "com.kf.gitui",
   "displayName": "Unity Git Better GUI",
-  "version": "0.2.0-preview",
+  "version": "0.1.0",
   "unity": "2022.3",
   "description": "JetBrains-quality Git tool window for Unity Editor: three-pane layout (graph | file tree | commit details), built on com.spoiledcat.git.api.",
   "license": "MIT",
