@@ -1589,12 +1589,32 @@ namespace KF.GitUI
             catch { anyStaged = false; }
             if (!anyStaged)
             {
-                // 区分提示：merge/rebase 进行中 → 引导完成冲突流程；否则 generic Nothing staged
-                if (session != null && (session.IsMergeInProgressQuiet() || session.IsRebaseInProgressQuiet()))
-                    SetCommitError(I18n.L(I18n.Keys.CommitConflictInProgress));
+                // merge/rebase 进行中？——git 语义：冲突全部解决（哪怕内容=HEAD，porcelain 无条目）
+                // 后，git commit 即可结束 merge。此时不应拦截（M3 人工测试实证：Accept Ours 内容=HEAD，
+                // porcelain 空但 MERGE_HEAD 仍在 → 必须允许提交完成 merge）。
+                var mergeResolved = false;
+                try
+                {
+                    if (session != null && session.IsMergeInProgressQuiet())
+                    {
+                        // 确认所有冲突已解决（无 UU 残留）才放行
+                        var conflictPaths = session.LoadConflictPaths();
+                        mergeResolved = conflictPaths.Count == 0;
+                    }
+                }
+                catch { mergeResolved = false; }
+                if (mergeResolved)
+                {
+                    // 放行：交给 git commit（git 会读 MERGE_MSG 生成 merge 提交）
+                }
                 else
-                    SetCommitError(I18n.L(I18n.Keys.CommitNothingStaged));
-                return;
+                {
+                    if (session != null && (session.IsMergeInProgressQuiet() || session.IsRebaseInProgressQuiet()))
+                        SetCommitError(I18n.L(I18n.Keys.CommitConflictInProgress));
+                    else
+                        SetCommitError(I18n.L(I18n.Keys.CommitNothingStaged));
+                    return;
+                }
             }
             commitButton.SetEnabled(false);
             SetCommitError("");
