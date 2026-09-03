@@ -108,7 +108,7 @@ namespace KF.GitUI
                 [Keys.BranchGroupLocal] = "Local",
                 [Keys.BranchGroupRemote] = "Remotes",
                 [Keys.BranchGroupTags] = "Tags",
-                [Keys.BranchGroupRecent] = "Recent",
+                [Keys.BranchGroupRecent] = "Recent branches",
                 [Keys.BranchCheckoutTagConfirm] = "Checkout tag {0}? This detaches HEAD.",
                 // -- 分支面板右键动作 --
                 [Keys.BranchCtxCheckout] = "Checkout",
@@ -156,6 +156,7 @@ namespace KF.GitUI
                 [Keys.RemoteRemove] = "Remove",
                 [Keys.RemoteRemoveConfirm] = "Remove remote {0}?\n\nThis only removes the remote definition; local branches are unaffected.",
                 [Keys.RemoteNameUrlRequired] = "Name and URL are required.",
+                [Keys.RemoteNone] = "(no remotes configured — use the form below to add one)",
                 [Keys.RemoteAdded] = "Remote {0} added.",
                 [Keys.RemoteUpdated] = "Remote {0} URL updated.",
                 [Keys.RemoteRemoved] = "Remote {0} removed.",
@@ -164,6 +165,8 @@ namespace KF.GitUI
                 [Keys.TagDeleteRemote] = "Delete tag on {0}",
                 [Keys.TagDeleteRemoteConfirm] = "Delete tag {0} on remote {1}?",
                 [Keys.TagNotOnRemote] = "Tag {0} does not exist on remote {1} (nothing to delete).",
+                [Keys.TagPushed] = "Tag {0} pushed to remote {1}.",
+                [Keys.TagDeletedRemote] = "Tag {0} deleted on remote {1}.",
             };
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>

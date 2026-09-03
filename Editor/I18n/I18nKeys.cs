@@ -162,6 +162,7 @@ namespace KF.GitUI
         public const string RemoteRemove = "remote.remove";
         public const string RemoteRemoveConfirm = "remote.removeConfirm"; // {0}=remote 名
         public const string RemoteNameUrlRequired = "remote.nameUrlRequired";
+        public const string RemoteNone = "remote.none";
         public const string RemoteAdded = "remote.added"; // {0}=remote 名
         public const string RemoteUpdated = "remote.updated"; // {0}=remote 名
         public const string RemoteRemoved = "remote.removed"; // {0}=remote 名
@@ -172,6 +173,8 @@ namespace KF.GitUI
         public const string TagDeleteRemote = "tag.deleteRemote"; // {0}=remote
         public const string TagDeleteRemoteConfirm = "tag.deleteRemoteConfirm"; // {0}=标签 {1}=remote
         public const string TagNotOnRemote = "tag.notOnRemote"; // {0}=标签 {1}=remote
+        public const string TagPushed = "tag.pushed"; // {0}=标签 {1}=remote
+        public const string TagDeletedRemote = "tag.deletedRemote"; // {0}=标签 {1}=remote
         }
     }
 }

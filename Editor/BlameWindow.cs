@@ -19,7 +19,7 @@ namespace KF.GitUI
         public static void Open(GitSession session, string path)
         {
             if (session == null) return;
-            var w = GetWindow<BlameWindow>(true, I18n.L(I18n.Keys.BlameTitle));
+            var w = GetWindow<BlameWindow>(true, I18n.L(I18n.Keys.BlameTitle, path));
             w.pathText = path;
             w.Show();
             w.Load(session, path);

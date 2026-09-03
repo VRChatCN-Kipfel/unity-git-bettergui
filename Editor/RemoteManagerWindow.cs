@@ -20,6 +20,7 @@ namespace KF.GitUI
         private string urlInput = string.Empty;
         private string error = string.Empty;
         private string status = string.Empty;
+        private bool loaded; // OnGUI 首次惰性加载（避免 Open→Reload 时序/窗口未显示问题）
         private Vector2 scroll;
 
         public static void Open(GitSession session)
@@ -27,13 +28,14 @@ namespace KF.GitUI
             if (session == null) return;
             var w = GetWindow<RemoteManagerWindow>(true, I18n.L(I18n.Keys.RemoteManageTitle));
             w.session = session;
-            w.Reload();
+            w.loaded = false;
             w.Show();
         }
 
         private void Reload()
         {
             error = string.Empty;
+            loaded = true;
             try { remotes = session.LoadRemotes(); }
             catch (Exception ex) { error = ex.Message; remotes = new List<GitRemote>(); }
             Repaint();
@@ -43,10 +45,14 @@ namespace KF.GitUI
         {
             if (session == null) { Close(); return; }
 
+            if (!loaded) Reload(); // 首次绘制时加载（窗口已显示，Repaint 生效）
+
             if (!string.IsNullOrEmpty(error))
                 EditorGUILayout.HelpBox(error, MessageType.Error);
 
             scroll = EditorGUILayout.BeginScrollView(scroll);
+            if (remotes.Count == 0 && string.IsNullOrEmpty(error))
+                EditorGUILayout.LabelField(I18n.L(I18n.Keys.RemoteNone));
             foreach (var r in remotes)
             {
                 EditorGUILayout.BeginHorizontal();

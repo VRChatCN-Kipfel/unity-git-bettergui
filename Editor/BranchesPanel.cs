@@ -124,6 +124,7 @@ namespace KF.GitUI
                 recentTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
                 recentTitle.style.paddingTop = 2;
                 recentTitle.style.paddingLeft = 4;
+                recentTitle.tooltip = "Recently checked out branches (from reflog) — click to switch";
                 scroll.Add(recentTitle);
                 foreach (var b in recentBranches)
                 {
@@ -183,9 +184,12 @@ namespace KF.GitUI
             if (isMain) sb.Append("★ ");
             if (isCurrent) sb.Append("» ");
             sb.Append(name);
-            // 任何有上游差距的分支都显示徽标（当前分支与其它本地分支一视同仁）
-            if (ahead > 0 || behind > 0)
-                sb.Append(string.Format("  ↑{0} ↓{1}", ahead, behind));
+            // 任何有上游差距的分支都显示徽标；0 值不显示（JetBrains 直觉：只有领先/落后的方向才出现）
+            var parts = new System.Collections.Generic.List<string>();
+            if (ahead > 0) parts.Add("↑" + ahead);
+            if (behind > 0) parts.Add("↓" + behind);
+            if (parts.Count > 0)
+                sb.Append("  ").Append(string.Join(" ", parts));
             return sb.ToString();
         }
 
@@ -482,7 +486,14 @@ namespace KF.GitUI
                     I18n.L(I18n.Keys.TagPushConfirm, tag, remote),
                     I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
                 return;
-            RunOp(session, () => session.PushTag(remote, tag), onChanged, onError);
+            try
+            {
+                session.PushTag(remote, tag);
+                onChanged?.Invoke();
+                EditorUtility.DisplayDialog(I18n.L(I18n.Keys.TagPush, remote),
+                    I18n.L(I18n.Keys.TagPushed, tag, remote), I18n.L(I18n.Keys.DialogOk));
+            }
+            catch (Exception ex) { onError?.Invoke(ex.Message); }
         }
 
         /// <summary>M3 P1：删除远程标签（先确认存在；push --delete refs/tags/&lt;tag&gt;）。</summary>
@@ -494,7 +505,7 @@ namespace KF.GitUI
                     I18n.L(I18n.Keys.TagDeleteRemoteConfirm, tag, remote),
                     I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
                 return;
-            RunOp(session, () =>
+            try
             {
                 if (!session.RemoteTagExists(remote, tag))
                 {
@@ -502,7 +513,11 @@ namespace KF.GitUI
                     return;
                 }
                 session.DeleteRemoteTag(remote, tag);
-            }, onChanged, onError);
+                onChanged?.Invoke();
+                EditorUtility.DisplayDialog(I18n.L(I18n.Keys.TagDeleteRemote, remote),
+                    I18n.L(I18n.Keys.TagDeletedRemote, tag, remote), I18n.L(I18n.Keys.DialogOk));
+            }
+            catch (Exception ex) { onError?.Invoke(ex.Message); }
         }
 
         private static void DoRename(GitSession session, GitSession.GitRefInfo target, Action onChanged, Action<string> onError)

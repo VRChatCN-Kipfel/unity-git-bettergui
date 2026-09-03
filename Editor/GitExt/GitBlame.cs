@@ -41,7 +41,7 @@ namespace KF.GitUI
                 if (rawLine.Length == 0) continue;
                 if (rawLine[0] == '\t')
                 {
-                    // 内容行：归属当前组
+                    // 内容行：归属当前组（组头 final-line 是首行号；组内多行逐行 +1）
                     if (curSha != null)
                     {
                         result.Add(new BlameLine
@@ -50,7 +50,7 @@ namespace KF.GitUI
                             CommitShort = curSha.Length >= 8 ? curSha.Substring(0, 8) : curSha,
                             Author = curAuthor ?? string.Empty,
                             Summary = curSummary ?? string.Empty,
-                            LineNumber = curLineNo,
+                            LineNumber = curLineNo++,
                             Content = rawLine.Substring(1),
                         });
                     }
@@ -68,8 +68,9 @@ namespace KF.GitUI
                     curAuthor = null;
                     curSummary = null;
                     var parts = value.Split(' ');
-                    if (parts.Length >= 3)
-                        int.TryParse(parts[1], out curLineNo); // orig-line 是第二列
+                    // porcelain 组头：<sha> <orig-line> <final-line> <group-size> —— final-line 是当前文件首行号（第 2 列）
+                    if (parts.Length >= 2)
+                        int.TryParse(parts[1], out curLineNo);
                 }
                 else if (key == "author")
                     curAuthor = value;

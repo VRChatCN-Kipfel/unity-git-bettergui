@@ -411,18 +411,20 @@ namespace KF.GitUI
                 if (rebaseTexts.Any(t => t.Contains("Rename") && t.StartsWith("Operations on", StringComparison.Ordinal)))
                     throw new System.Exception("SMOKE FAIL: upstream submenu leaks Rename (rebase)");
 
-                // 20) 分支行文本标识（主分支 ★ / 当前分支 » / 分支级 ↑↓；BMP 通用符号避免 emoji/Dingbats □）
+                // 20) 分支行文本标识（主分支 ★ / 当前分支 » / 分支级 ↑↓；0 值不显示；BMP 通用符号避免 emoji/Dingbats □）
                 if (BranchesPanel.FormatRefLabel("main", true, true, 0, 0) != "★ » main")
                     throw new System.Exception("SMOKE FAIL: label main+current");
                 if (BranchesPanel.FormatRefLabel("main", true, false, 0, 0) != "★ main")
                     throw new System.Exception("SMOKE FAIL: label main");
-                // M3 P2：任何跟踪分支都显示 ↑↓（不再限定当前分支）
+                // M3 P2：任何跟踪分支都显示 ↑↓（不再限定当前分支）；ahead/behind=0 时不显示对应方向
                 if (BranchesPanel.FormatRefLabel("feature/x", false, false, 2, 1) != "feature/x  ↑2 ↓1")
                     throw new System.Exception("SMOKE FAIL: label non-current ahead");
                 if (BranchesPanel.FormatRefLabel("feature/x", false, false, 0, 0) != "feature/x")
                     throw new System.Exception("SMOKE FAIL: label sync no badge");
-                if (BranchesPanel.FormatRefLabel("feature/x", false, true, 2, 0) != "» feature/x  ↑2 ↓0")
-                    throw new System.Exception("SMOKE FAIL: label current+ahead");
+                if (BranchesPanel.FormatRefLabel("feature/x", false, true, 2, 0) != "» feature/x  ↑2")
+                    throw new System.Exception("SMOKE FAIL: label current+ahead (behind 0 hidden)");
+                if (BranchesPanel.FormatRefLabel("feature/x", false, false, 0, 3) != "feature/x  ↓3")
+                    throw new System.Exception("SMOKE FAIL: label behind-only (ahead 0 hidden)");
 
                 // 21) 图谱分支筛选下拉（All/Current/refs 分组/面板开关；单选勾选）
                 var filterActAll = GitWindow.BuildBranchFilterActions(refs, null, () => "main", _ => { }, () => { }, true).ToList();
@@ -1063,9 +1065,9 @@ namespace KF.GitUI
                         throw new System.Exception($"SMOKE FAIL: topic badge ahead={topicRef.Ahead}/behind={topicRef.Behind} expect 1/0");
                     if (mainRef.Ahead != 0 || mainRef.Behind != 0)
                         throw new System.Exception($"SMOKE FAIL: main badge ahead={mainRef.Ahead}/behind={mainRef.Behind} expect sync");
-                    // DisplayText 集成（FormatRefLabel 已测；此处验证 refs 驱动）
+                    // DisplayText 集成（FormatRefLabel 已测；此处验证 refs 驱动；behind=0 不显示 ↓0）
                     if (BranchesPanel.FormatRefLabel(topicRef.DisplayName, false, false, topicRef.Ahead, topicRef.Behind)
-                        != "topic  ↑1 ↓0")
+                        != "topic  ↑1")
                         throw new System.Exception("SMOKE FAIL: topic label badge");
                 }
                 DeleteDir(abDir);
@@ -1170,24 +1172,23 @@ namespace KF.GitUI
                 RunCli(gitExeC, "config user.email smoke@local", blDir, out blErr, out var _);
                 RunCli(gitExeC, "config commit.gpgsign false", blDir, out blErr, out var _);
                 RunCli(gitExeC, "config core.autocrlf false", blDir, out blErr, out var _);
-                System.IO.File.WriteAllText(System.IO.Path.Combine(blDir, "src.cs"), "line1\nline2\n");
+                System.IO.File.WriteAllText(System.IO.Path.Combine(blDir, "src.cs"), "line1\nline2\nline3\n");
                 RunCli(gitExeC, "add src.cs", blDir, out blErr, out var _);
                 RunCli(gitExeC, "commit -m first", blDir, out blErr, out var _);
-                System.IO.File.WriteAllText(System.IO.Path.Combine(blDir, "src.cs"), "line1\nline2 EDITED\n");
+                System.IO.File.WriteAllText(System.IO.Path.Combine(blDir, "src.cs"), "line1 CH\nline2 EDITED\nline3 CH\n");
                 using (var sbl = GitSession.Open(blDir))
                 {
                     var blame = sbl.Blame("src.cs");
-                    if (blame.Count != 2)
-                        throw new System.Exception($"SMOKE FAIL: blame count={blame.Count} expect 2");
-                    // line1 = committed（smoke 提交）；line2 = uncommitted（工作区改动，0000…）
-                    if (blame[0].Content != "line1" || blame[0].LineNumber != 1
-                        || blame[0].Author != "smoke" || blame[0].Summary != "first"
-                        || blame[0].CommitShort.Length != 8)
-                        throw new System.Exception("SMOKE FAIL: blame committed line");
-                    if (blame[1].Content != "line2 EDITED" || blame[1].LineNumber != 2)
+                    if (blame.Count != 3)
+                        throw new System.Exception($"SMOKE FAIL: blame count={blame.Count} expect 3");
+                    // 工作区改 3 行（同 untracked 组）：LineNumber 必须逐行递增 1,2,3（组内 final 行号补偿）
+                    if (blame[0].LineNumber != 1 || blame[1].LineNumber != 2 || blame[2].LineNumber != 3)
+                        throw new System.Exception($"SMOKE FAIL: blame line numbers {blame[0].LineNumber},{blame[1].LineNumber},{blame[2].LineNumber} expect 1,2,3");
+                    if (blame.Count != 3 || blame[0].CommitShort != "00000000"
+                        || blame[1].Content != "line2 EDITED" || blame[1].LineNumber != 2)
                         throw new System.Exception("SMOKE FAIL: blame edited line content");
-                    if (blame[1].CommitShort != "00000000")
-                        throw new System.Exception($"SMOKE FAIL: blame uncommitted marker={blame[1].CommitShort}");
+                    if (blame[2].CommitShort != "00000000")
+                        throw new System.Exception($"SMOKE FAIL: blame uncommitted marker={blame[2].CommitShort}");
                 }
                 DeleteDir(blDir);
 
@@ -1591,6 +1592,7 @@ namespace KF.GitUI
         {
             if (session == null || item == null || item.IsDirectory) return;
             var path = item.OpsPath ?? item.Path;
+            var isUntracked = item.Entry.HasValue && item.Entry.Value.Untracked;
             var sessionCopy = session;
             var title = "HEAD vs " + path;
             var ctx = System.Threading.SynchronizationContext.Current;
@@ -1598,14 +1600,34 @@ namespace KF.GitUI
             {
                 try
                 {
-                    // git diff HEAD -- path（工作区含未暂存+暂存合并视图）
-                    var task = GitDiffTask.Raw(sessionCopy.Platform,
-                            "HEAD -- " + GitDiffTask.JoinPaths(new[] { path }))
-                        .Configure(sessionCopy.Platform.ProcessManager);
-                    var output = task.RunSynchronously();
-                    List<DiffRow> rows = new List<DiffRow>();
-                    if (task.Successful && !string.IsNullOrEmpty(output))
-                        rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
+                    List<DiffRow> rows;
+                    string output;
+                    if (isUntracked)
+                    {
+                        // 未跟踪文件：git diff 无输出 → 整文件"新增"视图（读工作区内容）
+                        output = null;
+                        var full = System.IO.Path.Combine(sessionCopy.ProjectPath, path.Replace('/', System.IO.Path.DirectorySeparatorChar));
+                        var lines = new List<string>();
+                        if (System.IO.File.Exists(full))
+                            lines = new List<string>(System.IO.File.ReadAllLines(full));
+                        var df = new DiffFile { OldPath = string.Empty, NewPath = path, IsNew = true };
+                        var hunk = new DiffHunk { OldStart = 0, OldCount = 0, NewStart = 1, NewCount = lines.Count };
+                        for (var i = 0; i < lines.Count; i++)
+                            hunk.Lines.Add(new DiffLine { Kind = DiffLineKind.New, Content = lines[i], LineNumber = i + 1 });
+                        df.Hunks.Add(hunk);
+                        rows = DiffRows.Build(new List<DiffFile> { df }, 0);
+                    }
+                    else
+                    {
+                        // git diff HEAD -- path（工作区含未暂存+暂存合并视图）
+                        var task = GitDiffTask.Raw(sessionCopy.Platform,
+                                "HEAD -- " + GitDiffTask.JoinPaths(new[] { path }))
+                            .Configure(sessionCopy.Platform.ProcessManager);
+                        output = task.RunSynchronously();
+                        rows = new List<DiffRow>();
+                        if (task.Successful && !string.IsNullOrEmpty(output))
+                            rows = DiffRows.Build(UnifiedDiffParser.Parse(output));
+                    }
                     // worktreeMode=true：hunk 级 Stage/Revert 可用
                     ctx?.Post(_ => DiffViewer.Open(sessionCopy, title, output, rows, true), null);
                 }

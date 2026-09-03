@@ -42,6 +42,8 @@ namespace KF.GitUI
             w.session = session;
             w.diffOutput = diffOutput;
             w.worktreeMode = worktreeMode;
+            // OnEnable 在 GetWindow 首次创建时已跑（rows 当时为空）→ 赋值后显式重建，否则窗口空白
+            w.RebuildRows();
             w.Show();
         }
 
@@ -61,7 +63,8 @@ namespace KF.GitUI
             rootVisualElement.Add(scrollView);
         }
 
-        private void RebuildRows()
+        /// <summary>重建内容（Open 赋值后调用；OnEnable 首建时也走）。scrollView 未建时跳过（等 OnEnable）。</summary>
+        public void RebuildRows()
         {
             if (scrollView == null) return;
             scrollView.Clear();
