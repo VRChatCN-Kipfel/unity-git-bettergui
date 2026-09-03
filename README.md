@@ -34,7 +34,7 @@ Package Manager ▸ **+** ▸ *Add package from git URL*:
 https://github.com/VRChatCN-Kipfel/unity-git-bettergui.git
 ```
 
-(For tagged releases append `#0.2.0-preview` or check the Releases page.)
+(For tagged releases append `#v0.1.0` or check the Releases page.)
 
 ## Quick start
 

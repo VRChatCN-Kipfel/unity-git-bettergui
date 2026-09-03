@@ -34,7 +34,7 @@ Package Manager ▸ **+** ▸ *Add package from git URL*：
 https://github.com/VRChatCN-Kipfel/unity-git-bettergui.git
 ```
 
-（使用标签版本请在 URL 后追加 `#0.2.0-preview`，或查看 Releases 页面。）
+（使用标签版本请在 URL 后追加 `#v0.1.0`，或查看 Releases 页面。）
 
 ## 快速开始
 
