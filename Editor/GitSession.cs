@@ -600,6 +600,23 @@ namespace KF.GitUI
             catch { return 0; }
         }
 
+        /// <summary>中止进行中的 merge（git merge --abort；merge 冲突后 3-way 视图的 Abort）。</summary>
+        public void MergeAbort()
+        {
+            RunOp("git merge --abort", new GitMergeTask(platform, true).Configure(platform.ProcessManager));
+        }
+
+        /// <summary>merge 冲突中的待提交消息（.git/MERGE_MSG；冲突解决后 Commit 页预填）。无则为 null。</summary>
+        public string LoadMergeMessage()
+        {
+            try
+            {
+                var p = System.IO.Path.Combine(projectPath, ".git", "MERGE_MSG");
+                return System.IO.File.Exists(p) ? System.IO.File.ReadAllText(p) : null;
+            }
+            catch { return null; }
+        }
+
         /// <summary>本地分支重命名（git branch -m）。</summary>
         public void RenameBranch(string oldName, string newName)
         {

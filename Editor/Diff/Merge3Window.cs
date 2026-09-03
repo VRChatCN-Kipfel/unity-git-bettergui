@@ -26,12 +26,19 @@ namespace KF.GitUI
         private Label headerLabel;
         private ListView fileList;
         private Dictionary<string, GitSession.ConflictBlobs> cache = new Dictionary<string, GitSession.ConflictBlobs>();
+        private Action onResolved; // 冲突解决/中止后通知主窗口刷新（workingEntries 等）
 
         public static void Open(GitSession session)
+        {
+            Open(session, null);
+        }
+
+        public static void Open(GitSession session, Action onResolved)
         {
             if (session == null) return;
             var w = GetWindow<Merge3Window>(true, I18n.L(I18n.Keys.Merge3Title));
             w.session = session;
+            w.onResolved = onResolved;
             w.Reload();
             w.Show();
         }
@@ -121,7 +128,45 @@ namespace KF.GitUI
             ops.Add(next);
             ops.Add(acceptOurs);
             ops.Add(acceptTheirs);
+            var spacer = new Label("    ");
+            ops.Add(spacer);
+            // M3 冲突流程控制：Abort（merge/rebase 通吃）+ rebase 冲突可 Continue
+            var abort = new Button(AbortOperation) { text = I18n.L(I18n.Keys.MergeAbort) };
+            ops.Add(abort);
+            if (rebaseMode)
+            {
+                var cont = new Button(ContinueRebase) { text = I18n.L(I18n.Keys.RebaseContinue) };
+                ops.Add(cont);
+            }
             rootVisualElement.Add(ops);
+        }
+
+        private void AbortOperation()
+        {
+            if (session == null) return;
+            if (!EditorUtility.DisplayDialog(I18n.L(I18n.Keys.MergeAbort),
+                    I18n.L(I18n.Keys.MergeAbortConfirm), I18n.L(I18n.Keys.DialogOk), I18n.L(I18n.Keys.DialogCancel)))
+                return;
+            try
+            {
+                if (rebaseMode) session.RebaseAbort();
+                else session.MergeAbort();
+                onResolved?.Invoke();
+                Close();
+            }
+            catch (Exception ex) { headerLabel.text = ex.Message; }
+        }
+
+        private void ContinueRebase()
+        {
+            if (session == null) return;
+            try
+            {
+                session.RebaseContinue();
+                onResolved?.Invoke();
+                Close();
+            }
+            catch (Exception ex) { headerLabel.text = ex.Message; }
         }
 
         private static VisualElement WrapLabel(string name, Label label, string title)
@@ -241,10 +286,11 @@ namespace KF.GitUI
                 currentPath = null;
                 if (conflictPaths.Count == 0)
                 {
-                    // 全部解决 → 提示继续 merge/rebase 或完成
+                    // 全部解决 → 提示继续 merge/rebase 或完成；通知主窗口刷新（勾选树+状态）
                     headerLabel.text = I18n.L(I18n.Keys.Merge3AllResolved);
                     oursLabel.text = "";
                     theirsLabel.text = "";
+                    onResolved?.Invoke();
                     return;
                 }
                 SelectFile(0);

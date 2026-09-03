@@ -567,12 +567,13 @@ namespace KF.GitUI
                 var rtWr = WordDiff.Compare("beta OLD word", "beta NEW word");
                 var rtDel = DiffRichText.BuildDeletedLine(rtWr.OldFragments, "beta OLD word");
                 var rtAdd = DiffRichText.BuildAddedLine(rtWr.NewFragments, "beta NEW word");
-                if (!rtDel.Contains("<mark=#FF6B6B55><s><color=#B95050>OLD</color></s></mark>")
-                    || !rtAdd.Contains("<mark=#6BCB7755><color=#1F6E43>NEW</color></mark>")
+                if (!rtDel.Contains("<mark=#FF6B6B55>OLD</mark>")
+                    || !rtAdd.Contains("<mark=#6BCB7755>NEW</mark>")
+                    || rtDel.Contains("<s>") || rtAdd.Contains("<color=")
                     || rtDel.StartsWith("<mark=") || rtAdd.StartsWith("<mark="))
                     throw new System.Exception($"SMOKE FAIL: richtext del={rtDel} add={rtAdd}");
-                if (rtDel != "beta <mark=#FF6B6B55><s><color=#B95050>OLD</color></s></mark> word"
-                    || rtAdd != "beta <mark=#6BCB7755><color=#1F6E43>NEW</color></mark> word")
+                if (rtDel != "beta <mark=#FF6B6B55>OLD</mark> word"
+                    || rtAdd != "beta <mark=#6BCB7755>NEW</mark> word")
                     throw new System.Exception($"SMOKE FAIL: richtext exact del={rtDel} add={rtAdd}");
                 if (DiffRichText.BuildPlainLine("plain <text>") != "plain &lt;text&gt;")
                     throw new System.Exception("SMOKE FAIL: richtext plain line");
@@ -599,10 +600,10 @@ namespace KF.GitUI
                 if (rdRows[2].Kind != DiffRowKind.Context || rdRows[2].OldLineNo != 1 || rdRows[2].NewLineNo != 1)
                     throw new System.Exception("SMOKE FAIL: diffrows context row");
                 if (rdRows[3].Kind != DiffRowKind.Old || rdRows[3].OldLineNo != 2
-                    || !rdRows[3].RichText.Contains("<mark=#FF6B6B55><s><color=#B95050>OLD</color></s></mark>"))
+                    || !rdRows[3].RichText.Contains("<mark=#FF6B6B55>OLD</mark>"))
                     throw new System.Exception("SMOKE FAIL: diffrows old word mark");
                 if (rdRows[4].Kind != DiffRowKind.New || rdRows[4].NewLineNo != 2
-                    || !rdRows[4].RichText.Contains("<mark=#6BCB7755><color=#1F6E43>NEW</color></mark>"))
+                    || !rdRows[4].RichText.Contains("<mark=#6BCB7755>NEW</mark>"))
                     throw new System.Exception("SMOKE FAIL: diffrows new word mark");
                 if (rdRows[5].Kind != DiffRowKind.Context || rdRows[5].OldLineNo != 3)
                     throw new System.Exception("SMOKE FAIL: diffrows trailing context");
@@ -623,9 +624,9 @@ namespace KF.GitUI
                     || rdFold[2].Kind != DiffRowKind.Fold
                     || !rdFold[2].RichText.Contains("folded"))
                     throw new System.Exception($"SMOKE FAIL: diffrows fold count={rdFold.Count}");
-                // DiffViewer 行元素构造（零窗口实例，静态 Builder 断言）
+                // DiffViewer 行元素构造（零窗口实例，静态 Builder 断言；gutter + sign + text = 3 子元素）
                 var rowEl = DiffViewer.BuildRowElement(rdRows[3]);
-                if (rowEl == null || rowEl.childCount != 2)
+                if (rowEl == null || rowEl.childCount != 3)
                     throw new System.Exception("SMOKE FAIL: diffviewer row element structure");
                 var rowLabel = rowEl.Q<Label>("diff-text");
                 if (rowLabel == null || rowLabel.text != rdRows[3].RichText)
@@ -1270,6 +1271,15 @@ namespace KF.GitUI
                 if (!hkTexts.Contains("Stage hunk") || !hkTexts.Contains("Revert hunk (discard changes)")
                     || hkTexts.Contains("Unstage hunk"))
                     throw new System.Exception("SMOKE FAIL: hunk menu items: " + string.Join(",", hkTexts));
+                // 无上下文 hunk（整文件重写，git apply 无法定位）→ 菜单禁用
+                var hkNoCtx = "diff --git a/n.txt b/n.txt\n--- a/n.txt\n+++ b/n.txt\n@@ -1,2 +1,10 @@\n-OLD\n+NEW\n+\n+\n";
+                if (GitPatchBuilder.HunkHasContext(hkNoCtx, 0, 0))
+                    throw new System.Exception("SMOKE FAIL: hunk context should be false for rewrite");
+                var hkDisabled = DiffViewer.BuildHunkActions(s, hkNoCtx, 0, 0, () => { }, _ => { }).ToList();
+                if (hkDisabled.Any(a => a.Enabled))
+                    throw new System.Exception("SMOKE FAIL: hunk actions should be disabled without context");
+                if (!GitPatchBuilder.HunkHasContext(hkDiff, 0, 0))
+                    throw new System.Exception("SMOKE FAIL: hunk context should be true with context lines");
                 // 行级 FileIndex：第二文件的 Old 行也应带 1
                 var bOldRow = hkRows2.FirstOrDefault(r => r.Kind == DiffRowKind.Old && r.FileIndex == 1);
                 if (bOldRow == null)
@@ -2043,7 +2053,23 @@ namespace KF.GitUI
 
         private void OpenMerge3()
         {
-            Merge3Window.Open(session);
+            Merge3Window.Open(session, () =>
+            {
+                // 冲突解决/中止后：刷新历史+工作区树（勾选树才能显示已解决文件）
+                RefreshWorkingStatus();
+                // merge 冲突解决后预填提交消息（git 的 MERGE_MSG）
+                if (msgSummary != null && string.IsNullOrEmpty(msgSummary.value))
+                {
+                    var m = session?.LoadMergeMessage();
+                    if (!string.IsNullOrEmpty(m))
+                    {
+                        var parts = m.Split(new[] { "\n\n" }, System.StringSplitOptions.None);
+                        msgSummary.SetValueWithoutNotify(parts[0].Trim());
+                        if (parts.Length > 1) msgBody.SetValueWithoutNotify(parts[1].Trim());
+                        UpdateCommitButton();
+                    }
+                }
+            });
         }
 
         private void BuildGraphPipeline()
@@ -2080,8 +2106,10 @@ namespace KF.GitUI
             }
 
             graphTable.SetData(logEntries, printer, refsByCommit);
-            graphStatus.text = I18n.L(I18n.Keys.GraphStatusFormat, logEntries.Count, layout.LaneCount,
-                refs?.Count ?? 0, logEntries[0].ShortID, logEntries[0].Summary);
+            graphStatus.text = logEntries.Count > 0
+                ? I18n.L(I18n.Keys.GraphStatusFormat, logEntries.Count, layout.LaneCount,
+                    refs?.Count ?? 0, logEntries[0].ShortID, logEntries[0].Summary)
+                : I18n.L(I18n.Keys.GraphEmpty);
         }
 
         private void ShowCommitDetail(int row)

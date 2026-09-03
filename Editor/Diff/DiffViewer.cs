@@ -98,18 +98,26 @@ namespace KF.GitUI
         }
 
         /// <summary>hunk 级操作菜单（静态可测）：Stage / Revert 该 hunk。
-        /// 视图语义 = HEAD vs 工作区（未暂存改动）→ 无 Unstage（Unstage 属于 --cached 视图，待后续）。</summary>
+        /// 视图语义 = HEAD vs 工作区（未暂存改动）→ 无 Unstage（Unstage 属于 --cached 视图，待后续）。
+        /// 无上下文 hunk（整文件重写，git apply 无法定位）→ 禁用并提示（实测 lb1 2→10 行场景）。</summary>
         public static IEnumerable<IGitContextAction> BuildHunkActions(GitSession session,
             string diffOutput, int fileIndex, int hunkIndex, Action onMutated, Action<string> onError)
         {
             if (session == null) return new List<IGitContextAction>();
 
+            var usable = GitPatchBuilder.HunkHasContext(diffOutput, fileIndex, hunkIndex);
             var actions = new List<IGitContextAction>
             {
                 new DelegateAction("hunk.stage", I18n.L(I18n.Keys.DiffStageHunk),
-                    () => RunHunk(session, diffOutput, fileIndex, hunkIndex, GitApplyMode.Stage, onMutated, onError)),
+                    () => RunHunk(session, diffOutput, fileIndex, hunkIndex, GitApplyMode.Stage, onMutated, onError))
+                {
+                    Enabled = usable,
+                },
                 new DelegateAction("hunk.revert", I18n.L(I18n.Keys.DiffRevertHunk),
-                    () => RunHunk(session, diffOutput, fileIndex, hunkIndex, GitApplyMode.Revert, onMutated, onError)),
+                    () => RunHunk(session, diffOutput, fileIndex, hunkIndex, GitApplyMode.Revert, onMutated, onError))
+                {
+                    Enabled = usable,
+                },
             };
             return actions;
         }
@@ -150,32 +158,60 @@ namespace KF.GitUI
             text.style.flexGrow = 1f;
             text.style.whiteSpace = WhiteSpace.Normal;
 
+            var sign = new Label(BuildSign(row));
+            sign.style.fontSize = 12;
+            sign.style.color = BuildSignColor(row);
+            sign.style.paddingRight = 4;
+            sign.style.flexShrink = 0;
+
             switch (row.Kind)
             {
                 case DiffRowKind.FileHeader:
                 case DiffRowKind.HunkHeader:
-                    text.style.backgroundColor = new Color(0.55f, 0.55f, 0.55f, 0.15f);
+                    line.style.backgroundColor = new Color(0.55f, 0.55f, 0.55f, 0.15f);
                     break;
                 case DiffRowKind.Old:
-                    text.style.backgroundColor = new Color(0.85f, 0.30f, 0.30f, 0.18f);
+                    line.style.backgroundColor = new Color(0.85f, 0.30f, 0.30f, 0.14f);
                     break;
                 case DiffRowKind.New:
-                    text.style.backgroundColor = new Color(0.30f, 0.80f, 0.35f, 0.16f);
+                    line.style.backgroundColor = new Color(0.30f, 0.80f, 0.35f, 0.12f);
                     break;
                 case DiffRowKind.Binary:
                     text.style.color = new Color(0.7f, 0.5f, 0.1f, 1f);
                     text.style.unityFontStyleAndWeight = FontStyle.Italic;
                     break;
                 case DiffRowKind.Fold:
-                    text.style.backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.08f);
+                    line.style.backgroundColor = new Color(0.5f, 0.5f, 0.5f, 0.08f);
                     text.style.unityFontStyleAndWeight = FontStyle.Italic;
                     text.style.color = new Color(0.5f, 0.5f, 0.6f, 1f);
                     break;
             }
 
             line.Add(gutter);
+            line.Add(sign);
             line.Add(text);
             return line;
+        }
+
+        /// <summary>行首符号：删除 - / 新增 + / 其它空（JetBrains 直觉；用户反馈"只需行首标 -"）。</summary>
+        private static string BuildSign(DiffRow row)
+        {
+            switch (row.Kind)
+            {
+                case DiffRowKind.Old: return "-";
+                case DiffRowKind.New: return "+";
+                default: return "";
+            }
+        }
+
+        private static Color BuildSignColor(DiffRow row)
+        {
+            switch (row.Kind)
+            {
+                case DiffRowKind.Old: return new Color(0.82f, 0.25f, 0.25f);
+                case DiffRowKind.New: return new Color(0.20f, 0.62f, 0.28f);
+                default: return new Color(0.45f, 0.45f, 0.45f);
+            }
         }
 
         private static string BuildGutter(DiffRow row)

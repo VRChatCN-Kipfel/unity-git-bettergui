@@ -27,6 +27,8 @@ namespace KF.GitUI
         {
             if (session == null) return;
             var w = GetWindow<RemoteManagerWindow>(true, I18n.L(I18n.Keys.RemoteManageTitle));
+            w.minSize = new Vector2(520, 240);
+            w.position = new Rect(100, 100, 640, 360);
             w.session = session;
             w.loaded = false;
             w.Show();

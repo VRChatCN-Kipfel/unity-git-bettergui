@@ -28,6 +28,7 @@ namespace KF.GitUI
                 [Keys.SelectACommit] = "select a commit",
                 // -- 图谱 --
                 [Keys.GraphLoading] = "loading…",
+                [Keys.GraphEmpty] = "(no commits for this filter)",
                 [Keys.GraphStatusFormat] = "{0} commits · {1} line(s) · {2} refs · head {3} \"{4}\"",
                 [Keys.GraphTooltipParents] = "parents: {0}",
                 [Keys.GraphTooltipFiles] = "files: {0}",
@@ -147,6 +148,8 @@ namespace KF.GitUI
                 [Keys.Merge3AcceptTheirs] = "Accept Theirs",
                 [Keys.Merge3RebaseSwapNote] = "[rebase: Yours/Theirs swapped per git semantics]",
                 [Keys.Merge3AllResolved] = "All conflicts resolved — commit (merge) or continue (rebase)",
+                [Keys.MergeAbort] = "Abort",
+                [Keys.MergeAbortConfirm] = "Abort the in-progress merge/rebase and return to the pre-operation state?",
                 [Keys.RemoteManageTitle] = "Manage Remotes",
                 [Keys.RemoteName] = "Name",
                 [Keys.RemoteUrl] = "URL",

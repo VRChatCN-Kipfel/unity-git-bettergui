@@ -68,7 +68,9 @@ namespace KF.GitUI
                     curAuthor = null;
                     curSummary = null;
                     var parts = value.Split(' ');
-                    // porcelain 组头：<sha> <orig-line> <final-line> <group-size> —— final-line 是当前文件首行号（第 2 列）
+                    // porcelain 组头：<sha> <orig-line> <final-line> <group-size>
+                    // final-line（当前文件行号）为第 2 列；group-size 是第 4 列（可能省略）
+                    // 实测：`0000... 1 1 3`（3 行一组，final=1）→ parts[1]；组内多行由内容行 curLineNo++ 递增
                     if (parts.Length >= 2)
                         int.TryParse(parts[1], out curLineNo);
                 }

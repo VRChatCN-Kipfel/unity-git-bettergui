@@ -12,6 +12,24 @@ namespace KF.GitUI
     /// </summary>
     public static class GitPatchBuilder
     {
+        /// <summary>该 hunk 是否含 ' ' 上下文行（无上下文 → git apply 无法定位，hunk 级操作不可用）。</summary>
+        public static bool HunkHasContext(string diffOutput, int fileIndex, int hunkIndex)
+        {
+            if (string.IsNullOrEmpty(diffOutput)) return false;
+            var fileBlocks = SplitFileBlocks(diffOutput);
+            if (fileIndex < 0 || fileIndex >= fileBlocks.Count) return false;
+            var blockLines = fileBlocks[fileIndex].Split('\n');
+            var hunkStart = FindHunkLineIndex(blockLines, hunkIndex);
+            if (hunkStart < 0) return false;
+            var hunkEnd = FindHunkEndLineIndex(blockLines, hunkStart);
+            for (var li = hunkStart + 1; li < hunkEnd; li++)
+            {
+                var l = blockLines[li];
+                if (l.Length > 0 && l[0] == ' ') return true;
+            }
+            return false;
+        }
+
         /// <summary>
         /// 从完整 diff 输出切片第 fileIndex 个文件的第 hunkIndex 个 hunk，写临时 patch 文件。
         /// 返回 patch 文件绝对路径（LF 文本）；提取失败返回 null（调用方提示"重新生成 diff"）。

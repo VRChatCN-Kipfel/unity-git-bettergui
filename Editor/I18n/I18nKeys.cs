@@ -16,6 +16,7 @@ namespace KF.GitUI
 
         // -- 图谱 --
         public const string GraphLoading = "ui.graph.loading";
+        public const string GraphEmpty = "ui.graph.empty";
         public const string GraphStatusFormat = "ui.graph.statusFormat"; // {0}=提交数 {1}=泳道数 {2}=refs数 {3}=head短号 {4}=head摘要
         public const string GraphTooltipParents = "ui.graph.tooltipParents"; // {0}=父提交列表
         public const string GraphTooltipFiles = "ui.graph.tooltipFiles"; // {0}=文件数
@@ -151,6 +152,8 @@ namespace KF.GitUI
         public const string Merge3AcceptTheirs = "merge3.acceptTheirs";
         public const string Merge3RebaseSwapNote = "merge3.rebaseSwapNote";
         public const string Merge3AllResolved = "merge3.allResolved";
+        public const string MergeAbort = "merge3.abort";
+        public const string MergeAbortConfirm = "merge3.abortConfirm";
 
         // M3 P1 remote 管理
         public const string RemoteManageTitle = "remote.manageTitle";
