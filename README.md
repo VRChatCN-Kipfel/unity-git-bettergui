@@ -1,5 +1,7 @@
 # Unity Git Better GUI
 
+[简体中文](README.zh.md) | English
+
 A JetBrains-quality Git tool window for the Unity Editor.
 
 Three panes, one window: **commit graph | file changes | commit details** — with content-level diff,
