@@ -55,6 +55,9 @@ namespace KF.GitUI
             w.worktreeMode = worktreeMode;
             w.onWorktreeMutated = onWorktreeMutated;
             w.Show();
+            // 双保险：Show 触发 OnEnable（会 RebuildRows）；这里再显式重建一次——
+            // 若 OnEnable 恰在赋值前触发（Unity 窗口创建时序不定，M3 实测"所有 diff 空"场景），保证 rows 已在。
+            w.RebuildRows();
         }
 
         private void OnEnable()
