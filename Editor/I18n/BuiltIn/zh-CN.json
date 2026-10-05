@@ -4,7 +4,7 @@
   "ui.detail.selectACommit": "选择一个提交",
   "ui.graph.loading": "加载中…",
   "ui.graph.empty": "（此筛选条件下无提交）",
-  "ui.graph.statusFormat": "{0} 个提交 · {1} 行 · {2} 个引用 · head {3} \"{4}\"",
+  "ui.graph.statusFormat": "{0} 个提交 · {1} 行 · {2} 个引用 · HEAD {3} \"{4}\"",
   "ui.graph.tooltipParents": "父提交：{0}",
   "ui.graph.tooltipFiles": "文件：{0}",
   "ui.detail.loadingChanges": "正在加载改动…",
