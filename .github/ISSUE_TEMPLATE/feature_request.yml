@@ -1,0 +1,85 @@
+name: Feature request
+description: |
+  Propose a capability for the Git tool window. Check the roadmap first so we can talk
+  about the right milestone.
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please skim [ROADMAP.md](https://github.com/VRChatCN-Kipfel/unity-git-bettergui/blob/main/ROADMAP.md):
+        M1–M3 are delivered and M4 (Unity integration, asset status, one-click ignore
+        templates, zh-CN localization) is the open milestone.
+
+        Explicit non-goals, so we do not spend your time on a "no": Shelf / Changelists,
+        a local persistent search index, a self-built 3-way merge engine, bundling a git
+        binary, and becoming a full commercial-grade Git client.
+
+  - type: dropdown
+    id: roadmap_area
+    attributes:
+      label: Which roadmap area does this belong to?
+      description: |
+        Pick the closest one; choose the last option if it is a new idea rather than a
+        roadmap item.
+      options:
+        - M1 — three-pane window, commit graph, git presence probe
+        - M2 — context menus, commit flow, branch panel
+        - M3 — content-level diff, 3-way conflicts, rebase, remotes, blame
+        - M4 — Unity integration: Project asset status, one-click ignore templates, zh-CN localization
+        - Not sure, or a new idea outside the roadmap
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: |
+        The workflow that is painful today and who it affects. Concrete situations beat
+        feature names.
+      placeholder: |
+        When I ... I have to ..., which costs ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        What you would like the tool window to do, including the window, menu or panel it
+        would live in if you have an opinion.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: |
+        Existing workarounds, other tools, or a smaller version of the same idea.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: willing_to_implement
+    attributes:
+      label: Are you willing to implement it yourself?
+      description: |
+        Contributions are welcome and reviewed against the contribution guide
+        (CONTRIBUTING.md), one change type per pull request.
+      options:
+        - Yes — I plan to open a pull request
+        - Yes — with guidance from a maintainer
+        - No — I am only proposing it
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: roadmap_checked
+    attributes:
+      label: Confirmation
+      options:
+        - label: I checked ROADMAP.md and the non-goals above; this request is not already delivered.
+          required: true

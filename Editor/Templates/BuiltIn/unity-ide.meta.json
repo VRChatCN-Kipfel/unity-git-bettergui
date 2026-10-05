@@ -1,0 +1,6 @@
+{
+  "name": { "zh": "Unity IDE 与工程文件", "en": "Unity IDE & Project Files" },
+  "description": { "zh": "只忽略 IDE 与工程文件（.vs/.idea/.vscode、csproj/unityproj/sln/suo/user/userprefs 等）以及 .DS_Store/Thumbs.db，不含 Unity 生成目录与构建输出，需与其它模板配合。", "en": "Only IDE and project files (.vs/.idea/.vscode, csproj/unityproj/sln/suo/user/userprefs, ...) plus .DS_Store/Thumbs.db; it contains neither generated folders nor build outputs, so combine it with another template." },
+  "tags": ["unity", "ide", "rider", "vscode"],
+  "order": 120
+}

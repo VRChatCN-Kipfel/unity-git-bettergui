@@ -1,0 +1,12 @@
+# Unity Minimal — only the generated folders that must never be committed.
+#
+# Case convention: the [Ll]ibrary/ double form also matches on case-sensitive filesystems (Linux).
+
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/

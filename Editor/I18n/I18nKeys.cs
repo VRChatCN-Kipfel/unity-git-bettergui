@@ -190,6 +190,37 @@ namespace KF.GitUI
         public const string TagNotOnRemote = "tag.notOnRemote"; // {0}=标签 {1}=remote
         public const string TagPushed = "tag.pushed"; // {0}=标签 {1}=remote
         public const string TagDeletedRemote = "tag.deletedRemote"; // {0}=标签 {1}=remote
+
+        // M4 一键 ignore 模板
+        public const string IgnoreTemplatesTitle = "ui.templates.title";
+        public const string IgnoreTemplatesButton = "ui.templates.button";
+        public const string IgnoreTemplatesHint = "ui.templates.hint";
+        public const string IgnoreTemplatesDirectories = "ui.templates.directories"; // {0}=内置目录 {1}=项目目录名
+        public const string IgnoreTemplatesList = "ui.templates.list";
+        public const string IgnoreTemplatesPreview = "ui.templates.preview";
+        public const string IgnoreTemplatesSummary = "ui.templates.summary"; // {0}=将新增行数 {1}=已存在行数
+        public const string IgnoreTemplatesWillCreate = "ui.templates.willCreate"; // {0}=规则数
+        public const string IgnoreTemplatesWillOverwrite = "ui.templates.willOverwrite"; // {0}=规则数
+        public const string IgnoreTemplatesMode = "ui.templates.mode";
+        public const string IgnoreTemplatesModeMerge = "ui.templates.mode.merge";
+        public const string IgnoreTemplatesModeOverwrite = "ui.templates.mode.overwrite";
+        public const string IgnoreTemplatesWrite = "ui.templates.write";
+        public const string IgnoreTemplatesExport = "ui.templates.export";
+        public const string IgnoreTemplatesExportPrompt = "ui.templates.exportPrompt";
+        public const string IgnoreTemplatesExportInvalid = "ui.templates.exportInvalid";
+        public const string IgnoreTemplatesExportEmpty = "ui.templates.exportEmpty";
+        public const string IgnoreTemplatesExported = "ui.templates.exported"; // {0}=导出路径
+        public const string IgnoreTemplatesOpenFolder = "ui.templates.openFolder";
+        public const string IgnoreTemplatesRescan = "ui.templates.rescan";
+        public const string IgnoreTemplatesEmpty = "ui.templates.empty";
+        public const string IgnoreTemplatesError = "ui.templates.error"; // {0}=错误消息
+        public const string IgnoreTemplatesSourceBuiltIn = "ui.templates.source.builtIn";
+        public const string IgnoreTemplatesSourceProject = "ui.templates.source.project";
+        public const string IgnoreTemplatesSourceUser = "ui.templates.source.user";
+        public const string IgnoreTemplatesCreated = "ui.templates.created"; // {0}=模板名 {1}=规则数
+        public const string IgnoreTemplatesMerged = "ui.templates.merged"; // {0}=模板名 {1}=新增 {2}=已存在
+        public const string IgnoreTemplatesOverwritten = "ui.templates.overwritten"; // {0}=模板名 {1}=规则数 {2}=备份路径
+        public const string IgnoreTemplatesUpToDate = "ui.templates.upToDate"; // {0}=模板名 {1}=已存在行数
         }
     }
 }

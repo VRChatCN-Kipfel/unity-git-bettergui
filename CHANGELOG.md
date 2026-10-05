@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+- M4 一键 ignore 模板（支柱四）：菜单 `Window ▸ Git ▸ Ignore Templates…`（主窗口工具栏同入口）。
+  刻意独立于 `GitSession`——它只碰工程根 `.gitignore`，因此 git 缺失或项目未初始化时同样可用。
+  - 模板库三来源：包内 `Editor/Templates/BuiltIn/`、项目内 `.gitui-ignore-templates/`、
+    个人 `UserSettings/GitBetterGui/IgnoreTemplates/`；同名 id 由高优先级**整份**覆盖。
+  - 贡献一个模板 = 一个 `<id>.gitignore`（首行必须为用途注释）+ 可选 `<id>.meta.json`
+    （双语名/描述、tags、order）。没有清单文件，也不需要改代码。
+  - 写入默认**合并**：只追加缺失规则、既有内容原样保留、已存在的规则行绝不重复写入；
+    覆盖模式先备份 `.gitignore.bak`；右侧预览显示对当前 `.gitignore` 的**真实计算结果**；
+    同一模板重复写入是 no-op。
+  - 窗口内可把当前 `.gitignore` 导出为项目共享模板（缺首行注释时自动补），作为提 PR 的捷径。
+  - 内置 4 套：`unity-standard`（推荐默认）、`unity-minimal`、`unity-ide`、`unity-assetstore`。
+  - 冒烟入口 `KF.GitUI.IgnoreTemplateSmokeTest.Run`：发现/元数据/块级合并/幂等/覆盖+备份/来源优先级/
+    导出/`ui.templates.*` 键的双向完备性（缺失与死键都判失败）。
+- 贡献渠道（此前完全缺失）：`.github/PULL_REQUEST_TEMPLATE.md`、`.github/ISSUE_TEMPLATE/`
+  （bug 报告 / 功能请求 / **贡献 ignore 模板**表单）、`CONTRIBUTING.md` 与 `CONTRIBUTING.zh.md`。
+- 设计稿 [docs/M4-IGNORE-TEMPLATES.md](docs/M4-IGNORE-TEMPLATES.md)：模板格式契约、加载优先级、
+  写入语义、模板质量红线与已知取舍（含"为什么不收全局 `*.pdb`"）。
+
 ### Fixed
 - 自动刷新轮询不再阻塞编辑器主线程。原先 `OnEditorUpdate` 每次都在主线程同步执行
   `GetFingerprint()`/`LoadConflictPaths()`，其中 `LoadStatus()` 走 `RunSynchronously()`

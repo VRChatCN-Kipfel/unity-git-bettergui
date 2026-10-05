@@ -1,0 +1,53 @@
+# Unity Standard — generated folders, build outputs, IDE/project files and OS junk (recommended default).
+#
+# Case convention: Unity-generated folders use the [Ll]ibrary/ double form, so case-sensitive
+# filesystems (Linux) match as well.
+# Not anchored: use /[Bb]uild/ style if your Assets/ contains a real folder of that name.
+
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Build outputs
+[Bb]uild/
+[Bb]uilds/
+[Ee]xportedObj/
+*.apk
+*.aab
+
+# Unity-generated debug artifacts (never hold real assets)
+*.pidb
+*.pidb.meta
+
+# Crash reports
+sysinfo.txt
+crashlytics-build.properties
+
+# IDE / project files
+.vs/
+.idea/
+.vscode/
+.gradle/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.booproj
+*.svd
+*.opendb
+*.VC.db
+
+# Unity package exports — delete this section if the repo distributes .unitypackage files
+*.unitypackage
+
+# OS junk
+.DS_Store
+Thumbs.db

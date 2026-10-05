@@ -51,11 +51,11 @@ _To be added — help wanted (M4)._
 See [ROADMAP.md](ROADMAP.md). Immediate community-help items (M4):
 
 - **Project icons** — asset status indicators in the Project window
-- **One-click ignore template**
+- ~~**One-click ignore template**~~ — **shipped** (M4). Window ▸ Git ▸ *Ignore Templates…*; contribute a template with one `*.gitignore` file plus an optional `*.meta.json` — see [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Localization** — zh-CN primary; other languages welcome via the I18n table
 - **Side-by-side diff** capstone
 
-Issues and PRs welcome. Keep one PR to one change type; small focused commits are appreciated.
+Issues and PRs welcome. Keep one PR to one change type; small focused commits are appreciated. Contributor-facing templates live in [.github/](.github/) and the guide in [CONTRIBUTING.md](CONTRIBUTING.md) / [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md).
 
 ## License
 

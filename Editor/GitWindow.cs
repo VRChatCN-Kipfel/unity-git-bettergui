@@ -65,6 +65,16 @@ namespace KF.GitUI
         }
 
         /// <summary>
+        /// 一键 ignore 模板（M4 支柱四）。刻意独立于本窗口：它只碰项目根的 .gitignore，
+        /// 不依赖 GitSession/仓库状态，因此 git 缺失或项目未初始化时同样可用。
+        /// </summary>
+        [MenuItem("Window/Git/Ignore Templates…")]
+        public static void OpenIgnoreTemplates()
+        {
+            IgnoreTemplateWindow.Open();
+        }
+
+        /// <summary>
         /// 批处理冒烟测试：-executeMethod KF.GitUI.GitWindow.SmokeTest
         /// 验证：三栏布局 + 引擎（泳道/逐行边/行内元素）+ 真实提交加载。
         /// 测试仓库（9 提交，git log 按日期排序）：r0 810e7c4(merge y) r1 58c902b(merge x)
@@ -2537,6 +2547,14 @@ namespace KF.GitUI
             branchFilterBtn.name = "btn-branches";
             branchFilterBtn.tooltip = I18n.L(I18n.Keys.BranchFilterAll);
             toolbar.Add(branchFilterBtn);
+            // M4 支柱四：一键 ignore 模板（与仓库状态无关，独立窗口）
+            var ignoreTemplatesBtn = new Button(IgnoreTemplateWindow.Open)
+            {
+                text = I18n.L(I18n.Keys.IgnoreTemplatesButton)
+            };
+            ignoreTemplatesBtn.name = "btn-ignore-templates";
+            ignoreTemplatesBtn.tooltip = I18n.L(I18n.Keys.IgnoreTemplatesTitle);
+            toolbar.Add(ignoreTemplatesBtn);
             // M3：冲突徽标（merge/rebase 冲突时出现，点击开 3-way 视图）
             conflictBadge = new Button(OpenMerge3) { text = "" };
             conflictBadge.name = "btn-conflicts";

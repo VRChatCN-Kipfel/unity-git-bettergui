@@ -1,0 +1,6 @@
+{
+  "name": { "zh": "Unity 最小", "en": "Unity Minimal" },
+  "description": { "zh": "只忽略必须忽略的 7 个运行时生成目录：Library、Temp、Obj、Build、Builds、Logs、UserSettings；适合已有自有忽略规则、只想补底线的用户。", "en": "Only the seven generated folders that must never be committed: Library, Temp, Obj, Build, Builds, Logs and UserSettings; for users who already keep their own ignore rules." },
+  "tags": ["unity", "minimal"],
+  "order": 110
+}
