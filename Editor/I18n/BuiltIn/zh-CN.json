@@ -1,5 +1,4 @@
 {
-  "ui.window.title": "Git Better GUI",
   "ui.window.gitUnavailable": "Git 不可用：{0}",
   "ui.detail.selectACommit": "选择一个提交",
   "ui.graph.loading": "加载中…",
@@ -134,7 +133,6 @@
   "merge3.abortConfirm": "中止进行中的合并/变基，并回到操作前的状态？",
   "remote.manageTitle": "管理远程",
   "remote.name": "名称",
-  "remote.url": "URL",
   "remote.add": "添加 / 更新",
   "remote.editUrl": "编辑 URL",
   "remote.remove": "移除",

@@ -255,6 +255,12 @@ so a pack written against an older release cannot pollute a newer one.
 language picker shows the coverage of each pack (`ja-JP 42/203`). A pack that is honest
 about its coverage is more useful than no pack at all.
 
+**Delete the keys you do not intend to translate** — do not copy the English text into them.
+A copied value is indistinguishable from a real translation: it claims the key was
+translated, inflates the reported coverage, and leaves the next reader unable to tell a
+deliberate choice from an oversight. A missing key says the same thing honestly, and the
+coverage count shows it.
+
 **Step 3 — verify locally.** Run the i18n smoke command:
 
 ```

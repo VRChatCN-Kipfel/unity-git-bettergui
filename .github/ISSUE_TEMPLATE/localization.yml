@@ -44,6 +44,10 @@ body:
         English original, and the language picker shows the coverage of each pack
         (`ja-JP 42/203`). Ship what you have.
 
+        **Delete the keys you do not intend to translate** instead of copying the English
+        text into them — a copied value claims the key was translated and inflates the
+        coverage, so nobody can tell a deliberate choice from an oversight.
+
         **Placeholders are a hard constraint.** Some keys carry format placeholders such
         as `{0}` and `{1}`. For those keys you must keep the same set of indices and the
         same format specifier per index (the `:N0` in `{0:N0}`, for example); only the
