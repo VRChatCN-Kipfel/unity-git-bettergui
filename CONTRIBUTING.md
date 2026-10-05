@@ -186,6 +186,139 @@ Editor/Templates/BuiltIn/unity-standard.meta.json
 }
 ```
 
+## Contributing a language
+
+A language contribution is **two files (the second optional) dropped into
+`Editor/I18n/BuiltIn/`**. No C# is involved, and you do not have to translate every key
+at once.
+
+**Step 0 — the laziest path.** The tool window can **export a skeleton**: it writes a
+`<lang>.json` containing every key next to its English text into the project-level
+`.gitui-i18n/` folder. Fill in the values you know and copy the file into
+`Editor/I18n/BuiltIn/` — you never transcribe a key by hand. Because `.gitui-i18n/` is read
+before the built-in folder, you can also apply the pack from there while you work.
+
+**Step 1 — add the files.**
+
+Required, `Editor/I18n/BuiltIn/<lang>.json` — a **flat** key/value map, UTF-8, LF line
+endings, one trailing newline. The keys are exactly the `I18n.Keys` strings:
+
+```json
+{
+  "ui.window.title": "Git 增强界面",
+  "ui.graph.loading": "加载中…"
+}
+```
+
+- `<lang>` is a BCP-47-style code: a 2–3 letter language code, optionally followed by `-`
+  and a 2–8 letter region code — `zh-CN`, `zh-TW`, `ja-JP`, `ko-KR`, `de-DE`, `ru-RU`. The
+  code **is** the file name, so `zh-CN` means `zh-CN.json`.
+- The map is flat: no nested objects, no comments, one key per line.
+
+Optional, `Editor/I18n/BuiltIn/<lang>.meta.json`:
+
+```json
+{
+  "nativeName": "简体中文",
+  "maintainers": ["your-github-login"],
+  "order": 20
+}
+```
+
+- `nativeName` is the language's own name for itself (`简体中文`, `日本語`, `Deutsch`), not
+  the English name;
+- `maintainers` is optional and lists GitHub user names — **one language has one primary
+  maintainer**, so two people do not edit the same pack at the same time and drift apart on
+  terminology;
+- `order` is optional, and a smaller value sorts earlier in the language picker.
+
+The Unity-generated `.meta` files for the new files are committed with them, exactly as for
+every other file in this package.
+
+**Step 2 — the rules that are not optional.**
+
+*Placeholders.* Many keys carry format placeholders such as `{0}` and `{1}` — the
+authoritative list is whatever `Editor/I18n/I18n.cs` holds, and the exported skeleton spells
+every key out, so you never count them yourself. For a key that has them you must keep
+
+- the **same set of indices**, and
+- the **same format specifier for each index**, such as the `:N0` in `{0:N0}`;
+
+while the order may follow your language's grammar freely. A key that breaks either rule is
+**discarded and falls back to the English original** — the window never breaks — and it is
+counted as a problem key.
+
+*Unknown keys.* A key the English table does not contain is ignored and logged as a warning,
+so a pack written against an older release cannot pollute a newer one.
+
+*Partial translations are welcome.* Anything you leave out falls back to English, and the
+language picker shows the coverage of each pack (`ja-JP 42/203`). A pack that is honest
+about its coverage is more useful than no pack at all.
+
+**Step 3 — verify locally.** Run the i18n smoke command:
+
+```
+Unity -batchmode -nographics -projectPath <host project path> -executeMethod KF.GitUI.I18nSmokeTest.Run -quit
+```
+
+It covers pack discovery, placeholder validation, unknown keys, coverage reporting, priority
+merging and skeleton export. Expect it to finish with exit code 0 and no assertion failure.
+Then open the window, switch to your language and read the strings you changed — a smoke run
+asserts mechanics, not how a translation reads.
+
+**Step 4 — open the pull request.** Change type `i18n`, the new `.json` file (plus
+`.meta.json` if you wrote one) and the smoke result pasted into the PR description. If you
+would rather hand the content over, open the **Contribute a language pack** issue instead; a
+maintainer can land the files for you.
+
+Where a pack is read from — the three sources are merged **per key**, not per file:
+
+```
+UserSettings/GitBetterGui/I18n/   ← personal (not version controlled), highest priority
+<project root>/.gitui-i18n/       ← project-shared (commit-friendly), team reuse
+<package>/Editor/I18n/BuiltIn/    ← built-in (ships with the package), lowest priority
+```
+
+This is a deliberate difference from the one-click ignore templates, where the
+higher-priority file replaces the whole template: here only the keys you actually provide
+win, and every other key keeps its English text. A local pack can therefore carry just the
+handful of keys you disagree with.
+
+The boundary of a "translated" window: menu paths declared with `[MenuItem("Window/Git/…")]`
+are static and Unity cannot localize them, so they stay English. Completing a language means
+translating every string **inside the window**; the `Window ▸ Git ▸ …` entries are out of
+scope. Terminology comes from the term table at the top of `Editor/I18n/I18n.cs`, which is
+the single authority — fetch → 提取, stage → 暂存, unstage → 取消暂存, checkout → 检出,
+branch → 分支, tag → 标签, merge → 合并, reset → 重置, stash → 贮藏, remote → 远程,
+2FA → 备选, index → 索引, worktree → 工作树, revert → 撤销变动, commit → 提交. Keep one
+term per concept and keep verbs consistent; if you believe a term is wrong, raise it in the
+issue rather than translating it your own way in a single pack.
+
+### Copy-paste skeleton
+
+```
+Editor/I18n/BuiltIn/zh-CN.json
+```
+
+```json
+{
+  "ui.window.title": "Git 增强界面",
+  "ui.graph.loading": "加载中…"
+}
+```
+
+```
+Editor/I18n/BuiltIn/zh-CN.meta.json
+```
+
+```json
+{
+  "nativeName": "简体中文",
+  "maintainers": ["your-github-login"],
+  "order": 20
+}
+```
+
 ## Commit messages and branch names
 
 - **Commit messages:** an English conventional prefix plus a Chinese description. Types in

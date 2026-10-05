@@ -167,6 +167,124 @@ Editor/Templates/BuiltIn/unity-standard.meta.json
 }
 ```
 
+## 贡献一门语言
+
+语言贡献就是**往 `Editor/I18n/BuiltIn/` 丢两个文件（第二个可选）**。
+不涉及 C#，也不必一次翻完所有键。
+
+**第 0 步 —— 最省事的路径。** 工具窗支持**导出骨架**：它把全部键连同英文原文写成一个
+`<lang>.json`，落在项目内 `.gitui-i18n/`。你只需填上会翻的值，再把文件复制进
+`Editor/I18n/BuiltIn/` —— 键不用手抄。因为 `.gitui-i18n/` 的读取优先级高于包内目录，
+你也可以先把它放在这里边做边验。
+
+**第 1 步 —— 放文件。**
+
+必需：`Editor/I18n/BuiltIn/<lang>.json` —— **扁平**键值映射，UTF-8、LF 换行、末尾一个换行；
+键就是 `I18n.Keys` 里的字符串：
+
+```json
+{
+  "ui.window.title": "Git 增强界面",
+  "ui.graph.loading": "加载中…"
+}
+```
+
+- `<lang>` 为 BCP-47 风格代码：2–3 位语言码，可再跟 `-` 与 2–8 位区域码 ——
+  `zh-CN`、`zh-TW`、`ja-JP`、`ko-KR`、`de-DE`、`ru-RU`；代码**就是**文件名，
+  `zh-CN` 对应 `zh-CN.json`。
+- 映射是扁平的：不要嵌套对象、不要注释，一行一个键。
+
+可选：`Editor/I18n/BuiltIn/<lang>.meta.json`：
+
+```json
+{
+  "nativeName": "简体中文",
+  "maintainers": ["your-github-login"],
+  "order": 20
+}
+```
+
+- `nativeName` 是该语言的**自称**（`简体中文`、`日本語`、`Deutsch`），不是英文名；
+- `maintainers` 可选，为 GitHub 用户名数组 —— **一门语言一个主维护者**，
+  避免多人同时改同一语言而术语冲突；
+- `order` 可选，越小在语言选择界面越靠前。
+
+新增文件对应的 Unity `.meta` 与文件一并提交，与本包其它文件一致。
+
+**第 2 步 —— 不可选的规则。**
+
+*占位符。* 不少键带 `{0}`、`{1}` 之类的格式占位符 —— 准确清单以
+`Editor/I18n/I18n.cs` 为准，导出的骨架会把每个键都列出来，你不需要自己数。这类键必须保持
+
+- **索引集合一致**，且
+- **每个索引的格式说明符一致**（例如 `{0:N0}` 里的 `:N0`）；
+
+而顺序可以按目标语言语序自由调整。任一条不满足的键会被**丢弃并回退英文** ——
+界面不会崩 —— 并计入“问题键”。
+
+*未知键。* 英文表里没有的键会被忽略并告警，防止旧语言包污染新版本。
+
+*允许部分翻译。* 没提供的键自动回退英文原文，语言选择界面会显示每个语言包的覆盖率
+（例如 `ja-JP 42/203`）。一个如实标注覆盖率的半成品，比没有语言包更有用。
+
+**第 3 步 —— 本地验证。** 跑 i18n 冒烟命令：
+
+```
+Unity -batchmode -nographics -projectPath <宿主工程路径> -executeMethod KF.GitUI.I18nSmokeTest.Run -quit
+```
+
+它覆盖语言包发现、占位符校验、未知键、覆盖率、优先级合并与骨架导出。
+预期以退出码 0 结束且无断言失败。随后打开窗口切到你的语言，读一遍你改过的文案 ——
+冒烟只断言机制，不评判译文。
+
+**第 4 步 —— 提 PR。** 变更类型选 `i18n`，提交新的 `.json`（若写了 `.meta.json` 也一并提交），
+并在 PR 描述里贴上冒烟结果。若你只想把内容交出来，改用 **Contribute a language pack**
+表单开 issue，维护者可以代为落地。
+
+语言包的三来源是**键级**合并，不是整份覆盖：
+
+```
+UserSettings/GitBetterGui/I18n/   ← 个人本地（不入版本控制），优先级最高
+<工程根>/.gitui-i18n/             ← 项目内共享（可提交，团队复用）
+<包>/Editor/I18n/BuiltIn/         ← 包内内置（随包升级），优先级最低
+```
+
+这与一键 ignore 模板刻意不同：模板是“高优先级文件整份替换”，而语言包只在你真正提供的键上
+生效，其余键保持英文原文。所以本地语言包可以只放你不同意的那几个键。
+
+“中文界面完整”的边界：`[MenuItem("Window/Git/…")]` 的菜单路径是静态属性，Unity 无法本地化，
+因此保持英文；把一门语言补全指的是**窗口内文案**全部翻译，`Window ▸ Git ▸ …` 不在范围内。
+术语以 `Editor/I18n/I18n.cs` 顶部的术语定则为唯一依据 —— fetch → 提取、stage → 暂存、
+unstage → 取消暂存、checkout → 检出、branch → 分支、tag → 标签、merge → 合并、
+reset → 重置、stash → 贮藏、remote → 远程、2FA → 备选、index → 索引、worktree → 工作树、
+revert → 撤销变动、commit → 提交；术语唯一、动词一致。若你认为某条定则不妥，
+请在 issue 里提出，不要在单个语言包里另起译法。
+
+### 可直接复制的骨架
+
+```
+Editor/I18n/BuiltIn/zh-CN.json
+```
+
+```json
+{
+  "ui.window.title": "Git 增强界面",
+  "ui.graph.loading": "加载中…"
+}
+```
+
+```
+Editor/I18n/BuiltIn/zh-CN.meta.json
+```
+
+```json
+{
+  "nativeName": "简体中文",
+  "maintainers": ["your-github-login"],
+  "order": 20
+}
+```
+
 ## 提交消息与分支命名
 
 - **提交消息：** 英文 conventional 前缀 + 中文描述。在用类型为 `feat`、`fix`、`docs`、

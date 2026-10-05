@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- M4 界面多语言**贡献框架**（与 ignore 模板同一套"丢文件即贡献"思路；简体中文语言包随后按此流程提
+  交，用于压力测试渠道本身）：
+  - 一门语言 = `Editor/I18n/BuiltIn/<lang>.json`（扁平键值映射）+ 可选 `<lang>.meta.json`
+    （`nativeName` / `maintainers` / `order`）。贡献者不需要改代码。
+  - 三来源**键级**合并：个人 `UserSettings/GitBetterGui/I18n/` ＞ 项目 `.gitui-i18n/` ＞ 包内内置；
+    **允许部分翻译**，未提供的键回退英文，语言窗口显示覆盖率（`ja-JP 42/203`）。
+  - 占位符硬校验：带 `{0}` 类格式占位符的键（当前 64/203，分母随界面增长），索引集合与格式说明符必须与英文一致
+    （语序自由）；不一致的键被**丢弃并回退英文**——否则 `I18n.L(key, args)` 会抛 FormatException。
+    未知键忽略并计数，`_` 前缀键视为注释静默忽略。
+  - 界面语言窗口（`Window ▸ Git ▸ Language…`）：列出语言包与覆盖率、报告被忽略/被丢弃的键、
+    一键切换并记住（EditorPrefs `kf.gitui.language`）；启动时按已保存选择或系统语言应用。
+  - 语言切换后主窗口界面重建（`I18n.LanguageChanged` → `RebuildUI()` + 重新灌图谱数据）。
+  - **骨架导出**：一键生成含全部键与英文原文的语言包到项目目录，贡献者填空即可；已存在则拒绝覆盖。
+  - `FlatJson`：自研严格扁平 JSON 解析器（`JsonUtility` 不支持任意键字典，本包又要求零依赖）。
+  - 冒烟入口 `KF.GitUI.I18nSmokeTest.Run`：键表三方一致、英文表占位符连续性、JSON 六类非法输入、
+    占位符比对、语言代码校验、单文件解析诊断、键级归并与"高层无效键剔除"、ApplyLanguage 回退与
+    无残留、骨架导出、`ui.language.*` 键双向完备性。
+- 设计稿 [docs/M4-LOCALIZATION.md](docs/M4-LOCALIZATION.md)：贡献者契约、合并语义、校验与防御、
+  运行时 API、已知边界（菜单路径受 Unity 限制不可本地化、RTL 未验证、翻译平台未接）。
 - M4 一键 ignore 模板（支柱四）：菜单 `Window ▸ Git ▸ Ignore Templates…`（主窗口工具栏同入口）。
   刻意独立于 `GitSession`——它只碰工程根 `.gitignore`，因此 git 缺失或项目未初始化时同样可用。
   - 模板库三来源：包内 `Editor/Templates/BuiltIn/`、项目内 `.gitui-ignore-templates/`、

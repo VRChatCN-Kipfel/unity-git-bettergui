@@ -13,6 +13,7 @@ Tick exactly one. One PR = one change type.
 - [ ] `fix` — a bug fix
 - [ ] `docs` — documentation only
 - [ ] `templates` — a one-click `.gitignore` template under `Editor/Templates/BuiltIn/`
+- [ ] `i18n` — a localization pack under `Editor/I18n/BuiltIn/` (or a translation fix)
 - [ ] `perf` — performance work with no intended behavior change
 
 ## Related issue
@@ -45,6 +46,12 @@ Describe exactly what you ran and what you saw.
   Unity -batchmode -nographics -projectPath <host project path> -executeMethod KF.GitUI.IgnoreTemplateSmokeTest.Run -quit
   ```
 
+- For any change under `Editor/I18n/`, also run:
+
+  ```
+  Unity -batchmode -nographics -projectPath <host project path> -executeMethod KF.GitUI.I18nSmokeTest.Run -quit
+  ```
+
 - Log lines (the `[gitui]` and `[api-smoke]` tags are the ones a reviewer looks for):
 - Manual check in the editor (what you clicked, what you expected, what you got):
 
@@ -63,7 +70,7 @@ Describe exactly what you ran and what you saw.
 
 <!-- 本节供中文读者快速对照，保留即可。 -->
 
-- **变更类型**：一个 PR 只交一种类型的变更（`feat` / `fix` / `docs` / `templates` / `perf`）。
-- **验证方式**：本仓库没有 CI，不会自动跑任何检查，也没有需要等待的状态。请在 PR 里写清 Unity 版本、宿主工程、执行的冒烟命令与结果；改动 `Editor/Templates/` 时请额外跑 `KF.GitUI.IgnoreTemplateSmokeTest.Run`。日志里 `[gitui]` 与 `[api-smoke]` 是关键行。
+- **变更类型**：一个 PR 只交一种类型的变更（`feat` / `fix` / `docs` / `templates` / `i18n` / `perf`）。
+- **验证方式**：本仓库没有 CI，不会自动跑任何检查，也没有需要等待的状态。请在 PR 里写清 Unity 版本、宿主工程、执行的冒烟命令与结果；改动 `Editor/Templates/` 时请额外跑 `KF.GitUI.IgnoreTemplateSmokeTest.Run`，改动 `Editor/I18n/` 时请额外跑 `KF.GitUI.I18nSmokeTest.Run`。日志里 `[gitui]` 与 `[api-smoke]` 是关键行。
 - **检查清单**：新增的 Unity 资源文件必须连同 Unity 生成的 `.meta` 一起提交；禁止抄 UniGit / UnityGitUI（GPL-3.0）的代码，只能参考其布局与数据流思路；不要引入外部依赖。
 - **提交消息**：英文 conventional 前缀 + 中文描述，例如 `fix(poll): 自动刷新轮询不再阻塞编辑器主线程`、`perf(poll): 合并每轮的两次 git status`。

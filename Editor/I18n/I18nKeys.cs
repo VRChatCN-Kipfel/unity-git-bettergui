@@ -221,6 +221,30 @@ namespace KF.GitUI
         public const string IgnoreTemplatesMerged = "ui.templates.merged"; // {0}=模板名 {1}=新增 {2}=已存在
         public const string IgnoreTemplatesOverwritten = "ui.templates.overwritten"; // {0}=模板名 {1}=规则数 {2}=备份路径
         public const string IgnoreTemplatesUpToDate = "ui.templates.upToDate"; // {0}=模板名 {1}=已存在行数
+
+        // M4 界面语言（多语言贡献框架）
+        public const string LanguageTitle = "ui.language.title";
+        public const string LanguageHint = "ui.language.hint";
+        public const string LanguageList = "ui.language.list";
+        public const string LanguageEnglish = "ui.language.english";
+        public const string LanguageCoverage = "ui.language.coverage"; // {0}=已翻译键数 {1}=总键数
+        public const string LanguageMaintainers = "ui.language.maintainers"; // {0}=维护者列表
+        public const string LanguageFallbackNote = "ui.language.fallbackNote";
+        public const string LanguageUnknownKeys = "ui.language.unknownKeys"; // {0}=被忽略的键数
+        public const string LanguageInvalidKeys = "ui.language.invalidKeys"; // {0}=被丢弃的键数
+        public const string LanguageApply = "ui.language.apply";
+        public const string LanguageApplied = "ui.language.applied"; // {0}=语言代码
+        public const string LanguageAppliedEnglish = "ui.language.appliedEnglish";
+        public const string LanguageExport = "ui.language.export";
+        public const string LanguageExportPrompt = "ui.language.exportPrompt";
+        public const string LanguageExportDone = "ui.language.exportDone"; // {0}=骨架文件路径
+        public const string LanguageInvalidCode = "ui.language.invalidCode";
+        public const string LanguageSkeletonEmpty = "ui.language.skeletonEmpty";
+        public const string LanguageSkeletonExists = "ui.language.skeletonExists"; // {0}=已存在路径
+        public const string LanguageOpenFolder = "ui.language.openFolder";
+        public const string LanguageRescan = "ui.language.rescan";
+        public const string LanguageNone = "ui.language.none";
+        public const string LanguageError = "ui.language.error"; // {0}=错误消息
         }
     }
 }
