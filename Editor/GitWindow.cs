@@ -40,6 +40,9 @@ namespace KF.GitUI
             public List<string> ConflictPaths;
             public bool InMerge;
             public bool InRebase;
+            // 非 null = 本轮失败。错误原文随结果回到主线程再打印，
+            // 日志与去重状态因此都只归主线程，后台线程不碰共享字段。
+            public string Error;
         }
 
         private volatile PollResult pendingPoll;
@@ -49,6 +52,8 @@ namespace KF.GitUI
         private double lastConflictCheck;
         // 上一次 update 时窗口是否可见（用于"从后台切回立即补一次刷新"）
         private bool wasRendered;
+        // 最近一次轮询失败的原文（仅主线程读写）：同一错误只上报一次
+        private string lastPollError;
 
         [MenuItem("Window/Git/Git Better GUI (wip)")]
         public static void Open()
@@ -2189,9 +2194,10 @@ namespace KF.GitUI
                     if (logEntries[i].CommitID == keepCommit) { graphTable.Select(i); break; }
         }
 
-        /// <summary>窗口是否真的在渲染。Dock 区里被切到后台的标签页其 rootVisualElement.panel 为 null
-        /// （Unity 2022.3.22f1 实测：未激活标签 panel==null，激活标签 panel!=null），据此可判断
-        /// "用户看不到这个窗口"，从而完全跳过轮询。</summary>
+        /// <summary>标签页在 Dock 里是否处于激活状态。被切到后台的标签页其 rootVisualElement.panel 为 null
+        /// （Unity 2022.3.22f1 实测：未激活标签 panel==null，激活标签 panel!=null），据此跳过非激活标签的轮询。
+        /// 判据只覆盖"Dock 标签页未激活"这一种情况：窗口被其他窗口遮挡或最小化时 panel 仍非 null，那时仍会轮询 ——
+        /// 不要把它当成完整的"用户看不到这个窗口"。</summary>
         private bool IsRendered()
         {
             var ve = rootVisualElement;
@@ -2200,7 +2206,7 @@ namespace KF.GitUI
 
         /// <summary>
         /// 仓库状态轮询（指纹 1.5s / 冲突 3s）。两条约束缺一不可：
-        ///   ① 只在窗口可见时轮询 —— 标签页切到后台时不做任何 git 工作（原先不可见也照跑，
+        ///   ① 只在标签页激活时轮询 —— Dock 标签切到后台时不做任何 git 工作（原先后台标签也照跑，
         ///      导致每 3 秒 fork 一次 `git status -u` 并同步等待，编辑器周期性掉帧）。
         ///   ② git I/O 全部搬进后台线程 —— 主线程只做"比较指纹 + 应用 UI"，不再 RunSynchronously
         ///      阻塞等待子进程。
@@ -2209,16 +2215,17 @@ namespace KF.GitUI
         {
             if (session == null) return;
 
-            // 主线程消费上一次后台结果（每帧都试，结果就绪即应用）
-            ApplyPendingPoll();
-
             if (!IsRendered())
             {
-                // 不可见 = 用户看不到，不再发起任何 git 工作；不做轮询节流推进，
-                // 这样切回前台时 wasRendered 翻转会立即补一次刷新。
+                // 标签页在后台 = 用户看不到，既不发起新的 git 工作，也不消费在途结果 ——
+                // 消费会走到 RefreshData()（主线程同步 git 读取），那正是这里要避免的开销。
+                // 不做轮询节流推进，这样切回前台时 wasRendered 翻转会立即补一次刷新。
                 wasRendered = false;
                 return;
             }
+
+            // 主线程消费上一次后台结果（每帧都试，结果就绪即应用）
+            ApplyPendingPoll();
             if (!wasRendered)
             {
                 // 首次显示 / 从后台切回：立即补一次，避免用户干等 1.5s 才看到最新状态。
@@ -2271,8 +2278,9 @@ namespace KF.GitUI
                 }
                 catch (Exception ex)
                 {
-                    // 后台失败不清空 UI，只放弃本轮（与原先 try/catch 静默语义一致）
-                    Debug.LogWarning("[gitui] poll failed: " + ex.Message);
+                    // 后台失败不清空 UI，只放弃本轮。错误原文随结果带回主线程再打印，
+                    // 日志与去重状态因此都只归主线程所有，后台线程不碰共享字段。
+                    pr.Error = ex.Message;
                     pr.Fingerprint = null;
                     pr.ConflictValid = false;
                 }
@@ -2289,6 +2297,18 @@ namespace KF.GitUI
             // 过期结果不得清 pollInFlight：新一代可能仍在飞
             if (pr.Generation != pollGeneration) return;
             pollInFlight = false;
+
+            // 失败日志去重：git 持续不可用（未安装 / PATH 变化 / 仓库被移走）时不再按轮询节奏刷屏；
+            // 错误内容变化会重新报告，成功一轮后再次失败也会重新报告。
+            if (pr.Error != null)
+            {
+                if (pr.Error != lastPollError) Debug.LogWarning("[gitui] poll failed: " + pr.Error);
+                lastPollError = pr.Error;
+            }
+            else
+            {
+                lastPollError = null;
+            }
 
             if (pr.ConflictValid) ApplyConflictBadge(pr.ConflictPaths, pr.InMerge, pr.InRebase);
 
