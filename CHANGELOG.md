@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### Fixed
+- 自动刷新轮询不再阻塞编辑器主线程。原先 `OnEditorUpdate` 每次都在主线程同步执行
+  `GetFingerprint()`/`LoadConflictPaths()`，其中 `LoadStatus()` 走 `RunSynchronously()`
+  会 fork 一个 `git status -b -u --porcelain` 子进程并等待其结束；窗口不可见时也照跑，
+  导致大仓库（含 `Library/`、未跟踪目录）下编辑器周期性掉帧。现在：
+  1. **只在标签页真正渲染时轮询** —— 窗口被切到后台（`rootVisualElement.panel == null`）
+     时完全不做 git 工作；切回时立即补一次刷新。
+  2. **git I/O 全部移入后台线程**，主线程仅比较指纹并更新 UI；单飞 + 30s 超时兜底，
+     避免请求叠加或异常后轮询永久停摆。
+
 ## [0.1.0] - 2026-09
 
 ### Added

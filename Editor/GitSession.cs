@@ -649,8 +649,42 @@ namespace KF.GitUI
             return paths;
         }
 
-        /// <summary>rebase 进行中快速查询（3-way 视图标签对调用；失败静默返回 false）。</summary>
-        public bool IsRebaseInProgressQuiet()
+        /// <summary>一次 status 取全的冲突快照（LoadConflictSnapshot 的返回值）。</summary>
+        public sealed class ConflictSnapshot
+        {
+            public List<string> ConflictPaths;
+            public bool InMerge;
+            public bool InRebase;
+        }
+
+        /// <summary>
+        /// 一次 git status 同时取回冲突路径与 merge/rebase 在途状态。
+        /// 与分别调用 LoadConflictPaths() / IsMergeInProgressQuiet() / IsRebaseInProgressQuiet()
+        /// 语义等价，但只 fork 一次 `git status -b -u --porcelain`：后两者的组合原本要跑两次
+        /// status（LoadConflictPaths 一次，IsRebaseInProgressQuiet 在无 rebase 目录时再一次），
+        /// 在大仓库（含 Library/、未跟踪大目录）下等于每轮多扫一遍整个工作区。
+        /// </summary>
+        public ConflictSnapshot LoadConflictSnapshot()
+        {
+            var st = LoadStatus();
+            var paths = new List<string>();
+            if (st.Entries != null)
+                foreach (var e in st.Entries)
+                    if (e.Unmerged)
+                        paths.Add(e.path);
+
+            return new ConflictSnapshot
+            {
+                ConflictPaths = paths,
+                InMerge = IsMergeInProgressQuiet(),
+                InRebase = IsRebaseInProgressQuiet(st),
+            };
+        }
+
+        /// <summary>rebase 进行中快速查询（3-way 视图标签对调用；失败静默返回 false）。
+        /// <paramref name="preloadedStatus"/> 非 null 时复用调用方已加载的 status，
+        /// 不再为同一次判定另起一次 `git status`（轮询路径见 LoadConflictSnapshot）。</summary>
+        public bool IsRebaseInProgressQuiet(GitStatus? preloadedStatus = null)
         {
             try
             {
@@ -661,7 +695,7 @@ namespace KF.GitUI
                 if (System.IO.Directory.Exists(System.IO.Path.Combine(gitDir, "rebase-merge"))
                     || System.IO.Directory.Exists(System.IO.Path.Combine(gitDir, "rebase-apply")))
                     return true;
-                var st = LoadStatus();
+                var st = preloadedStatus ?? LoadStatus();
                 return AnalyzeRebaseState(st, out var inR, out var _) && inR;
             }
             catch { return false; }

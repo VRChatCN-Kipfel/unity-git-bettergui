@@ -28,6 +28,33 @@ namespace KF.GitUI
         private string lastFingerprint;
         private double lastFingerprintCheck;
 
+        // ---- 后台轮询状态（见 OnEditorUpdate）----
+        // 工作线程写 pendingPoll、主线程取走并应用。刻意不用 SynchronizationContext：
+        // EditorApplication.update 回调里 SynchronizationContext.Current 不保证是主线程上下文，
+        // 而 update 本身每帧都在主线程跑，用它做消费者最稳。
+        private sealed class PollResult
+        {
+            public int Generation;
+            public string Fingerprint;
+            public bool ConflictValid;
+            public List<string> ConflictPaths;
+            public bool InMerge;
+            public bool InRebase;
+            // 非 null = 本轮失败。错误原文随结果回到主线程再打印，
+            // 日志与去重状态因此都只归主线程，后台线程不碰共享字段。
+            public string Error;
+        }
+
+        private volatile PollResult pendingPoll;
+        private volatile bool pollInFlight;
+        private int pollGeneration;
+        private double pollStartedAt;
+        private double lastConflictCheck;
+        // 上一次 update 时窗口是否可见（用于"从后台切回立即补一次刷新"）
+        private bool wasRendered;
+        // 最近一次轮询失败的原文（仅主线程读写）：同一错误只上报一次
+        private string lastPollError;
+
         [MenuItem("Window/Git/Git Better GUI (wip)")]
         public static void Open()
         {
@@ -2167,56 +2194,161 @@ namespace KF.GitUI
                     if (logEntries[i].CommitID == keepCommit) { graphTable.Select(i); break; }
         }
 
-        /// <summary>仓库状态轮询（1.5s）：HEAD/refs 变化（提交/分支/fetch）-> 自动刷新图谱与标签。</summary>
+        /// <summary>标签页在 Dock 里是否处于激活状态。被切到后台的标签页其 rootVisualElement.panel 为 null
+        /// （Unity 2022.3.22f1 实测：未激活标签 panel==null，激活标签 panel!=null），据此跳过非激活标签的轮询。
+        /// 判据只覆盖"Dock 标签页未激活"这一种情况：窗口被其他窗口遮挡或最小化时 panel 仍非 null，那时仍会轮询 ——
+        /// 不要把它当成完整的"用户看不到这个窗口"。</summary>
+        private bool IsRendered()
+        {
+            var ve = rootVisualElement;
+            return ve != null && ve.panel != null;
+        }
+
+        /// <summary>
+        /// 仓库状态轮询（指纹 1.5s / 冲突 3s）。两条约束缺一不可：
+        ///   ① 只在标签页激活时轮询 —— Dock 标签切到后台时不做任何 git 工作（原先后台标签也照跑，
+        ///      导致每 3 秒 fork 一次 `git status -u` 并同步等待，编辑器周期性掉帧）。
+        ///   ② git I/O 全部搬进后台线程 —— 主线程只做"比较指纹 + 应用 UI"，不再 RunSynchronously
+        ///      阻塞等待子进程。
+        /// </summary>
         private void OnEditorUpdate()
         {
             if (session == null) return;
+
+            if (!IsRendered())
+            {
+                // 标签页在后台 = 用户看不到，既不发起新的 git 工作，也不消费在途结果 ——
+                // 消费会走到 RefreshData()（主线程同步 git 读取），那正是这里要避免的开销。
+                // 不做轮询节流推进，这样切回前台时 wasRendered 翻转会立即补一次刷新。
+                wasRendered = false;
+                return;
+            }
+
+            // 主线程消费上一次后台结果（每帧都试，结果就绪即应用）
+            ApplyPendingPoll();
+            if (!wasRendered)
+            {
+                // 首次显示 / 从后台切回：立即补一次，避免用户干等 1.5s 才看到最新状态。
+                // 冲突检查有独立的 3s 节流，若只清指纹节流，切回时 wantConflicts 仍可能为 false，
+                // 徽标得再等一个轮询周期才刷新 —— 两条线一起清，才算真的"立即补一次"。
+                wasRendered = true;
+                lastFingerprintCheck = 0;
+                lastConflictCheck = 0;
+            }
+
             var now = EditorApplication.timeSinceStartup;
             if (now - lastFingerprintCheck < 1.5) return;
             lastFingerprintCheck = now;
-            var fp = session.GetFingerprint();
-            // 冲突轮询（低频，独立于指纹：UU 只改 status 不改 history 指纹）
-            PollConflicts(now);
-            if (fp == lastFingerprint) return;
-            lastFingerprint = fp;
+
+            // 单飞：上一轮后台还没回来就不叠加新请求（仓库很大时 git status 可能超过 1.5s）。
+            // 超时兜底：避免后台异常退出导致轮询永久停摆。
+            if (pollInFlight && now - pollStartedAt < PollTimeoutSeconds) return;
+
+            StartPoll(now);
+        }
+
+        private const double PollTimeoutSeconds = 30.0;
+
+        /// <summary>把一次"取指纹 + 取冲突状态"提交到后台线程。绝不阻塞主线程。</summary>
+        private void StartPoll(double now)
+        {
+            var gen = ++pollGeneration;
+            pollInFlight = true;
+            pollStartedAt = now;
+
+            // 冲突状态是低频的（3s）；指纹是高频的（1.5s）。合并到同一次后台往返里，
+            // 需要时多跑几条只读 git 命令，避免一个 tick 内并发多次子进程。
+            var wantConflicts = conflictBadge != null && now - lastConflictCheck >= 3.0;
+            if (wantConflicts) lastConflictCheck = now;
+
+            var s = session;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var pr = new PollResult { Generation = gen };
+                try
+                {
+                    pr.Fingerprint = s.GetFingerprint();
+                    if (wantConflicts)
+                    {
+                        // 一次 status 取全冲突路径 + merge/rebase 在途状态：
+                        // 原先三个方法各走一遍，其中 LoadConflictPaths 与 IsRebaseInProgressQuiet
+                        // 会先后 fork 两次 `git status -b -u`。
+                        var snap = s.LoadConflictSnapshot();
+                        pr.ConflictPaths = snap.ConflictPaths;
+                        pr.InMerge = snap.InMerge;
+                        pr.InRebase = snap.InRebase;
+                        pr.ConflictValid = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 后台失败不清空 UI，只放弃本轮。错误原文随结果带回主线程再打印，
+                    // 日志与去重状态因此都只归主线程所有，后台线程不碰共享字段。
+                    pr.Error = ex.Message;
+                    pr.Fingerprint = null;
+                    pr.ConflictValid = false;
+                }
+                pendingPoll = pr;
+            });
+        }
+
+        /// <summary>主线程：应用后台轮询结果。过期结果（已被超时重试顶替）直接丢弃。</summary>
+        private void ApplyPendingPoll()
+        {
+            var pr = pendingPoll;
+            if (pr == null) return;
+            pendingPoll = null;
+            // 过期结果不得清 pollInFlight：新一代可能仍在飞
+            if (pr.Generation != pollGeneration) return;
+            pollInFlight = false;
+
+            // 失败日志去重：git 持续不可用（未安装 / PATH 变化 / 仓库被移走）时不再按轮询节奏刷屏；
+            // 错误内容变化会重新报告，成功一轮后再次失败也会重新报告。
+            if (pr.Error != null)
+            {
+                if (pr.Error != lastPollError) Debug.LogWarning("[gitui] poll failed: " + pr.Error);
+                lastPollError = pr.Error;
+            }
+            else
+            {
+                lastPollError = null;
+            }
+
+            if (pr.ConflictValid) ApplyConflictBadge(pr.ConflictPaths, pr.InMerge, pr.InRebase);
+
+            if (pr.Fingerprint == null) return;
+            if (pr.Fingerprint == lastFingerprint) return;
+            lastFingerprint = pr.Fingerprint;
             try { RefreshData(); }
             catch (Exception ex) { Debug.LogWarning("[gitui] auto-refresh failed: " + ex); }
         }
 
-        private double lastConflictCheck;
-
-        private void PollConflicts(double now)
+        /// <summary>冲突徽标按 merge/rebase 状态刷新（UI 部分，必须在主线程调用）。</summary>
+        private void ApplyConflictBadge(List<string> paths, bool inMerge, bool inRebase)
         {
-            if (conflictBadge == null || now - lastConflictCheck < 3) return;
-            lastConflictCheck = now;
-            try
+            if (conflictBadge == null) return;
+            paths = paths ?? new List<string>();
+            // 用户要求：merge/rebase 完成或中止前按钮不消失（含 0 冲突但 process 进行中）
+            if (paths.Count > 0 || inMerge || inRebase)
             {
-                var paths = session.LoadConflictPaths();
-                var inMerge = session.IsMergeInProgressQuiet();
-                var inRebase = session.IsRebaseInProgressQuiet();
-                // 用户要求：merge/rebase 完成或中止前按钮不消失（含 0 冲突但 process 进行中）
-                if (paths.Count > 0 || inMerge || inRebase)
-                {
-                    var label = inRebase
-                        ? I18n.L(I18n.Keys.RebaseConflictHint, paths.Count)
-                        : inMerge
-                            ? I18n.L(I18n.Keys.MergeConflictHint, paths.Count)
-                            : I18n.L(I18n.Keys.ConflictHint, paths.Count);
-                    conflictBadge.text = label;
-                    conflictBadge.style.display = DisplayStyle.Flex;
-                    // 0 冲突 = 已全部解决、等待 commit/continue → 绿色（在途可继续）；仍有冲突 → 红
-                    conflictBadge.style.backgroundColor = paths.Count > 0
-                        ? new Color(0.85f, 0.30f, 0.30f, 1f)
-                        : new Color(0.20f, 0.65f, 0.28f, 1f);
-                    conflictBadge.tooltip = paths.Count > 0 ? string.Join("\n", paths)
-                        : inRebase ? I18n.L(I18n.Keys.RebaseInProgress) : I18n.L(I18n.Keys.MergeInProgress);
-                }
-                else
-                {
-                    conflictBadge.style.display = DisplayStyle.None;
-                }
+                var label = inRebase
+                    ? I18n.L(I18n.Keys.RebaseConflictHint, paths.Count)
+                    : inMerge
+                        ? I18n.L(I18n.Keys.MergeConflictHint, paths.Count)
+                        : I18n.L(I18n.Keys.ConflictHint, paths.Count);
+                conflictBadge.text = label;
+                conflictBadge.style.display = DisplayStyle.Flex;
+                // 0 冲突 = 已全部解决、等待 commit/continue → 绿色（在途可继续）；仍有冲突 → 红
+                conflictBadge.style.backgroundColor = paths.Count > 0
+                    ? new Color(0.85f, 0.30f, 0.30f, 1f)
+                    : new Color(0.20f, 0.65f, 0.28f, 1f);
+                conflictBadge.tooltip = paths.Count > 0 ? string.Join("\n", paths)
+                    : inRebase ? I18n.L(I18n.Keys.RebaseInProgress) : I18n.L(I18n.Keys.MergeInProgress);
             }
-            catch { }
+            else
+            {
+                conflictBadge.style.display = DisplayStyle.None;
+            }
         }
 
         private void OpenMerge3()
