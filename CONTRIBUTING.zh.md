@@ -177,6 +177,14 @@ Editor/Templates/BuiltIn/unity-standard.meta.json
 `Editor/I18n/BuiltIn/` —— 键不用手抄。因为 `.gitui-i18n/` 的读取优先级高于包内目录，
 你也可以先把它放在这里边做边验。
 
+也不必开编辑器：同一个导出提供了无界面入口，CI 与纯命令行工作流直接用它：
+
+```
+Unity -batchmode -nographics -projectPath <宿主工程路径> -executeMethod KF.GitUI.I18nTools.ExportSkeleton -lang zh-CN
+```
+
+（可选 `-skeletonDir <目录>`，默认写项目内 `.gitui-i18n/`。）
+
 **第 1 步 —— 放文件。**
 
 必需：`Editor/I18n/BuiltIn/<lang>.json` —— **扁平**键值映射，UTF-8、LF 换行、末尾一个换行；
@@ -192,7 +200,8 @@ Editor/Templates/BuiltIn/unity-standard.meta.json
 - `<lang>` 为 BCP-47 风格代码：2–3 位语言码，可再跟 `-` 与 2–8 位区域码 ——
   `zh-CN`、`zh-TW`、`ja-JP`、`ko-KR`、`de-DE`、`ru-RU`；代码**就是**文件名，
   `zh-CN` 对应 `zh-CN.json`。
-- 映射是扁平的：不要嵌套对象、不要注释，一行一个键。
+- 映射是扁平的：不要嵌套对象，一行一个键。以 `_` 开头的键会被静默忽略，可以拿来给自己写备注。
+- `Editor/I18n/BuiltIn/` 目录可能还不存在（尚未有任何语言包落地），新建即可。
 
 可选：`Editor/I18n/BuiltIn/<lang>.meta.json`：
 

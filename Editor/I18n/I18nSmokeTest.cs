@@ -39,6 +39,7 @@ namespace KF.GitUI
                 CheckMergeLayers();
                 CheckApplyLanguage(projectPack);
                 CheckExportSkeleton(tempRoot);
+                CheckBuiltInPacks();
                 CheckLanguageKeys();
             }
             catch (Exception ex)
@@ -319,6 +320,39 @@ namespace KF.GitUI
 
             Expect(!LanguagePackLibrary.ExportSkeleton("bad code", dir, out packPath, out metaPath, out error),
                 "invalid language code is rejected on export");
+        }
+
+        // ---- 10. 内置语言包自检（"若存在"式断言，不硬编码具体语言） ----
+
+        private static void CheckBuiltInPacks()
+        {
+            var dir = LanguagePackLibrary.BuiltInDirectory();
+            if (!Directory.Exists(dir))
+            {
+                Debug.Log("[i18n-smoke] no built-in language pack directory yet: " + dir);
+                return;
+            }
+
+            var count = 0;
+            foreach (var path in Directory.GetFiles(dir, "*" + LanguagePackLibrary.PackSuffix))
+            {
+                if (path.EndsWith(LanguagePackLibrary.MetaSuffix, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var pack = LanguagePackLibrary.ParseFile(path, LanguagePackSource.BuiltIn);
+                count++;
+
+                Expect(string.IsNullOrEmpty(pack.Error),
+                    $"built-in pack {pack.Lang} parses cleanly ({pack.Error})");
+                Expect(pack.UnknownKeys.Count == 0,
+                    $"built-in pack {pack.Lang} has no unknown keys ({string.Join(", ", pack.UnknownKeys.ToArray())})");
+                Expect(pack.InvalidKeys.Count == 0,
+                    $"built-in pack {pack.Lang} has no placeholder mismatches ({string.Join(", ", pack.InvalidKeys.ToArray())})");
+
+                Debug.Log($"[i18n-smoke] built-in pack {pack.Lang}: coverage {pack.CoverageText}, "
+                    + $"maintainers {(pack.Maintainers.Count == 0 ? "-" : string.Join(",", pack.Maintainers.ToArray()))}");
+            }
+
+            if (count == 0) Debug.Log("[i18n-smoke] no built-in language pack yet");
         }
 
         // ---- 9. ui.language.* 键完备性 ----

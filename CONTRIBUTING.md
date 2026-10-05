@@ -198,6 +198,15 @@ at once.
 `Editor/I18n/BuiltIn/` — you never transcribe a key by hand. Because `.gitui-i18n/` is read
 before the built-in folder, you can also apply the pack from there while you work.
 
+No editor session is needed either — the same export runs headless, which is what a CI or
+command-line workflow wants:
+
+```
+Unity -batchmode -nographics -projectPath <host project path> -executeMethod KF.GitUI.I18nTools.ExportSkeleton -lang zh-CN
+```
+
+(Optional `-skeletonDir <dir>`; the default is the project-level `.gitui-i18n/`.)
+
 **Step 1 — add the files.**
 
 Required, `Editor/I18n/BuiltIn/<lang>.json` — a **flat** key/value map, UTF-8, LF line
@@ -213,7 +222,9 @@ endings, one trailing newline. The keys are exactly the `I18n.Keys` strings:
 - `<lang>` is a BCP-47-style code: a 2–3 letter language code, optionally followed by `-`
   and a 2–8 letter region code — `zh-CN`, `zh-TW`, `ja-JP`, `ko-KR`, `de-DE`, `ru-RU`. The
   code **is** the file name, so `zh-CN` means `zh-CN.json`.
-- The map is flat: no nested objects, no comments, one key per line.
+- The map is flat: no nested objects, one key per line. A key starting with `_` is ignored
+  silently, so you can leave notes to yourself inside the file.
+- `Editor/I18n/BuiltIn/` may not exist yet — no pack has landed — in which case just create it.
 
 Optional, `Editor/I18n/BuiltIn/<lang>.meta.json`:
 
