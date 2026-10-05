@@ -2222,8 +2222,11 @@ namespace KF.GitUI
             if (!wasRendered)
             {
                 // 首次显示 / 从后台切回：立即补一次，避免用户干等 1.5s 才看到最新状态。
+                // 冲突检查有独立的 3s 节流，若只清指纹节流，切回时 wantConflicts 仍可能为 false，
+                // 徽标得再等一个轮询周期才刷新 —— 两条线一起清，才算真的"立即补一次"。
                 wasRendered = true;
                 lastFingerprintCheck = 0;
+                lastConflictCheck = 0;
             }
 
             var now = EditorApplication.timeSinceStartup;
