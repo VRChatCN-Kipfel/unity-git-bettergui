@@ -2270,9 +2270,13 @@ namespace KF.GitUI
                     pr.Fingerprint = s.GetFingerprint();
                     if (wantConflicts)
                     {
-                        pr.ConflictPaths = s.LoadConflictPaths();
-                        pr.InMerge = s.IsMergeInProgressQuiet();
-                        pr.InRebase = s.IsRebaseInProgressQuiet();
+                        // 一次 status 取全冲突路径 + merge/rebase 在途状态：
+                        // 原先三个方法各走一遍，其中 LoadConflictPaths 与 IsRebaseInProgressQuiet
+                        // 会先后 fork 两次 `git status -b -u`。
+                        var snap = s.LoadConflictSnapshot();
+                        pr.ConflictPaths = snap.ConflictPaths;
+                        pr.InMerge = snap.InMerge;
+                        pr.InRebase = snap.InRebase;
                         pr.ConflictValid = true;
                     }
                 }
