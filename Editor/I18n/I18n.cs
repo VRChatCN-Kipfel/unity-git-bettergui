@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 
 namespace KF.GitUI
@@ -182,7 +183,190 @@ namespace KF.GitUI
                 [Keys.TagNotOnRemote] = "Tag {0} does not exist on remote {1} (nothing to delete).",
                 [Keys.TagPushed] = "Tag {0} pushed to remote {1}.",
                 [Keys.TagDeletedRemote] = "Tag {0} deleted on remote {1}.",
+
+                // -- M4 一键 ignore 模板 --
+                [Keys.IgnoreTemplatesTitle] = "Ignore Templates",
+                [Keys.IgnoreTemplatesButton] = "Ignore Template…",
+                [Keys.IgnoreTemplatesHint] = "Built-in templates ship with the package. Drop your own under .gitui-ignore-templates/ (project, commit-friendly) or UserSettings/GitBetterGui/IgnoreTemplates/ (local only) — a template is one *.gitignore file plus an optional *.meta.json.",
+                [Keys.IgnoreTemplatesDirectories] = "Built-in: {0}\nProject: {1}",
+                [Keys.IgnoreTemplatesList] = "Templates",
+                [Keys.IgnoreTemplatesPreview] = "Result preview",
+                [Keys.IgnoreTemplatesSummary] = "{0} rule(s) will be added; {1} already present.",
+                [Keys.IgnoreTemplatesWillCreate] = "This project has no .gitignore yet — it will be created with {0} rule(s).",
+                [Keys.IgnoreTemplatesWillOverwrite] = "Overwrite mode — .gitignore will be replaced with {0} rule(s); the current file is backed up first.",
+                [Keys.IgnoreTemplatesMode] = "Write mode",
+                [Keys.IgnoreTemplatesModeMerge] = "Merge (append missing rules)",
+                [Keys.IgnoreTemplatesModeOverwrite] = "Overwrite (back up first)",
+                [Keys.IgnoreTemplatesWrite] = "Write .gitignore",
+                [Keys.IgnoreTemplatesExport] = "Export current .gitignore as template…",
+                [Keys.IgnoreTemplatesExportPrompt] = "Template id (lowercase kebab-case, e.g. my-studio-ignores):",
+                [Keys.IgnoreTemplatesExportInvalid] = "Template id must be lowercase kebab-case: a–z, 0–9 and single dashes.",
+                [Keys.IgnoreTemplatesExportEmpty] = "Nothing to export — this project has no .gitignore yet.",
+                [Keys.IgnoreTemplatesExported] = "Exported template to {0}",
+                [Keys.IgnoreTemplatesOpenFolder] = "Open project templates folder",
+                [Keys.IgnoreTemplatesRescan] = "Rescan",
+                [Keys.IgnoreTemplatesEmpty] = "(no templates found)",
+                [Keys.IgnoreTemplatesError] = "Ignore template operation failed: {0}",
+                [Keys.IgnoreTemplatesSourceBuiltIn] = "built-in",
+                [Keys.IgnoreTemplatesSourceProject] = "project",
+                [Keys.IgnoreTemplatesSourceUser] = "user",
+                [Keys.IgnoreTemplatesCreated] = "Created .gitignore from “{0}” — {1} rule(s).",
+                [Keys.IgnoreTemplatesMerged] = "Updated .gitignore from “{0}” — {1} added, {2} already present.",
+                [Keys.IgnoreTemplatesOverwritten] = "Replaced .gitignore from “{0}” — {1} rule(s). Backup: {2}",
+                [Keys.IgnoreTemplatesUpToDate] = "“{0}” would add nothing — .gitignore already covers it ({1} rule(s)).",
+
+                // -- M4 界面语言（多语言贡献框架） --
+                [Keys.LanguageTitle] = "Interface Language",
+                [Keys.LanguageHint] = "A language pack is one <lang>.json file (flat key → text) plus an optional <lang>.meta.json. Drop it in .gitui-i18n/ (project, commit-friendly) or UserSettings/GitBetterGui/I18n/ (local only). Untranslated keys fall back to English, so a partial translation is a valid contribution.",
+                [Keys.LanguageList] = "Available languages",
+                [Keys.LanguageEnglish] = "English (built-in)",
+                [Keys.LanguageCoverage] = "{0}/{1} keys translated",
+                [Keys.LanguageMaintainers] = "maintainers: {0}",
+                [Keys.LanguageFallbackNote] = "Keys you leave out fall back to English.",
+                [Keys.LanguageUnknownKeys] = "{0} key(s) ignored — not present in this build",
+                [Keys.LanguageInvalidKeys] = "{0} key(s) dropped — placeholder mismatch, they fall back to English",
+                [Keys.LanguageApply] = "Use this language",
+                [Keys.LanguageApplied] = "Interface language: {0}",
+                [Keys.LanguageAppliedEnglish] = "Interface language: English (built-in)",
+                [Keys.LanguageExport] = "Export skeleton for a new language…",
+                [Keys.LanguageExportPrompt] = "Language code (BCP-47, e.g. zh-CN, ja-JP, pt-BR):",
+                [Keys.LanguageExportDone] = "Skeleton written to {0} — replace the English values with your translation, then rescan.",
+                [Keys.LanguageInvalidCode] = "Language code must look like zh-CN or ja-JP (2–3 letters, optional -Region).",
+                [Keys.LanguageSkeletonEmpty] = "Cannot export a skeleton: the built-in English table is empty.",
+                [Keys.LanguageSkeletonExists] = "A language pack already exists at {0} — not overwriting it.",
+                [Keys.LanguageOpenFolder] = "Open project language folder",
+                [Keys.LanguageRescan] = "Rescan",
+                [Keys.LanguageNone] = "(no language pack found yet — export a skeleton to start one)",
+                [Keys.LanguageError] = "Language pack failed: {0}",
             };
+
+        /// <summary>英文基线快照（内置表原值）。切换语言时先整体恢复它、再叠加译文，
+        /// 保证上一门语言的残留不会留在界面里。</summary>
+        private static readonly Dictionary<string, string> EnglishBaseline;
+
+        /// <summary>全部界面键，按 Keys 常量的声明顺序（只含表里确有英文文案的键）。</summary>
+        private static readonly List<string> KeyList;
+
+        /// <summary>语言偏好持久化键（EditorPrefs）。</summary>
+        public const string PrefLanguage = "kf.gitui.language";
+
+        static I18n()
+        {
+            EnglishBaseline = new Dictionary<string, string>(Table, System.StringComparer.Ordinal);
+
+            // Keys 是一堆 const string，只能反射取；用 MetadataToken 排序以得到稳定的声明顺序
+            // （Dictionary 的枚举顺序不可依赖，而覆盖率/骨架都要求稳定顺序）。
+            var fields = typeof(Keys).GetFields(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var ordered = new List<KeyValuePair<int, string>>();
+            foreach (var field in fields)
+            {
+                if (!field.IsLiteral || field.FieldType != typeof(string)) continue;
+                var value = field.GetRawConstantValue() as string;
+                if (string.IsNullOrEmpty(value)) continue;
+                ordered.Add(new KeyValuePair<int, string>(field.MetadataToken, value));
+            }
+            ordered.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            KeyList = new List<string>(ordered.Count);
+            foreach (var entry in ordered)
+            {
+                if (!Table.ContainsKey(entry.Value))
+                {
+                    Debug.LogWarning("[i18n] key declared without a table entry: " + entry.Value);
+                    continue;
+                }
+                if (!KeyList.Contains(entry.Value)) KeyList.Add(entry.Value);
+            }
+        }
+
+        /// <summary>当前生效的语言代码；null/空串 = 英文基线（未启用任何语言包）。</summary>
+        public static string CurrentLanguage { get; private set; }
+
+        /// <summary>语言切换完成（界面需据此重建：已构建的 UI 不会自动换文案）。</summary>
+        public static event System.Action LanguageChanged;
+
+        /// <summary>全部界面键（Keys 声明顺序，且英文表里确有文案）。</summary>
+        public static IReadOnlyList<string> AllKeys
+        {
+            get { return KeyList; }
+        }
+
+        /// <summary>界面键总数（语言包覆盖率的分母）。</summary>
+        public static int KeyCount
+        {
+            get { return KeyList.Count; }
+        }
+
+        /// <summary>英文基线文案（语言包的比对基准与回退来源）；键不存在返回 null。</summary>
+        public static string EnglishText(string key)
+        {
+            string value;
+            return key != null && EnglishBaseline.TryGetValue(key, out value) ? value : null;
+        }
+
+        /// <summary>
+        /// 应用语言（不写 EditorPrefs）：先把表恢复到英文基线，再叠加语言包译文；
+        /// 语言代码为空或找不到包时即回到英文。未提供的键天然沿用英文，因此**允许部分翻译**。
+        /// </summary>
+        public static void ApplyLanguage(string lang)
+        {
+            foreach (var kv in EnglishBaseline) Table[kv.Key] = kv.Value;
+
+            LanguagePack pack = null;
+            if (!string.IsNullOrEmpty(lang)) pack = LanguagePackLibrary.Load(lang);
+
+            if (pack != null)
+            {
+                foreach (var kv in pack.Entries)
+                    if (Table.ContainsKey(kv.Key)) Table[kv.Key] = kv.Value;
+            }
+
+            CurrentLanguage = pack != null ? pack.Lang : null;
+
+            var handler = LanguageChanged;
+            if (handler != null) handler();
+        }
+
+        /// <summary>显式选择语言：应用并写入 EditorPrefs（跨会话记住）。</summary>
+        public static void SetLanguage(string lang)
+        {
+            ApplyLanguage(lang);
+            EditorPrefs.SetString(PrefLanguage, CurrentLanguage ?? string.Empty);
+        }
+
+        /// <summary>
+        /// 编辑器启动时恢复：优先用已保存的选择；没有则按系统语言猜一门（猜不到或没包 → 英文，且不写盘）。
+        /// </summary>
+        public static void InitFromPreferences()
+        {
+            var saved = EditorPrefs.GetString(PrefLanguage, string.Empty);
+            if (!string.IsNullOrEmpty(saved))
+            {
+                ApplyLanguage(saved);
+                return;
+            }
+            ApplyLanguage(GuessLanguageFromSystem());
+        }
+
+        /// <summary>系统语言 → 语言代码（没有对应语言包时 ApplyLanguage 会自动回退英文）。</summary>
+        public static string GuessLanguageFromSystem()
+        {
+            switch (Application.systemLanguage)
+            {
+                case SystemLanguage.ChineseSimplified: return "zh-CN";
+                case SystemLanguage.ChineseTraditional: return "zh-TW";
+                case SystemLanguage.Chinese: return "zh-CN";
+                case SystemLanguage.Japanese: return "ja-JP";
+                case SystemLanguage.Korean: return "ko-KR";
+                case SystemLanguage.German: return "de-DE";
+                case SystemLanguage.French: return "fr-FR";
+                case SystemLanguage.Spanish: return "es-ES";
+                case SystemLanguage.Russian: return "ru-RU";
+                case SystemLanguage.Portuguese: return "pt-BR";
+                default: return null;
+            }
+        }
 
         /// <summary>当前生效键表（只读视图；冒烟/M4 bundle 校验用）。</summary>
         public static IReadOnlyDictionary<string, string> All => Table;

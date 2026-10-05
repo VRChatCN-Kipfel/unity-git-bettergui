@@ -1,0 +1,6 @@
+{
+  "name": { "zh": "Unity 标准", "en": "Unity Standard" },
+  "description": { "zh": "推荐默认：忽略 Library/Temp/Obj/Logs/UserSettings/MemoryCaptures/Recordings 等生成目录、Build/Builds/ExportedObj 与 apk/aab 构建输出、Unity 生成的 pidb 解析数据库、崩溃报告、IDE 与工程文件（.vs/.idea/.vscode/.gradle/.consulo、csproj/sln/suo/user 等）、.unitypackage 导出以及 .DS_Store/Thumbs.db。", "en": "Recommended default: ignores generated folders (Library/Temp/Obj/Logs/UserSettings/MemoryCaptures/Recordings), build outputs (Build/Builds/ExportedObj, apk/aab), Unity's generated pidb parse database, crash reports, IDE and project files (.vs/.idea/.vscode/.gradle/.consulo, csproj/sln/suo/user, ...), .unitypackage exports, and .DS_Store/Thumbs.db." },
+  "tags": ["unity", "standard", "default"],
+  "order": 100
+}

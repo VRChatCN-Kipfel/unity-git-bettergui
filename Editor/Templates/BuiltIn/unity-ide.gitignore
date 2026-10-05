@@ -1,0 +1,20 @@
+# Unity IDE & Project Files — IDE artifacts and OS junk only; combine with another template for generated folders.
+
+# IDE / project files
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.booproj
+*.svd
+*.opendb
+*.VC.db
+
+# OS junk
+.DS_Store
+Thumbs.db

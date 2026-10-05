@@ -1,0 +1,6 @@
+{
+  "name": { "zh": "Unity Asset Store", "en": "Unity Asset Store" },
+  "description": { "zh": "只忽略 Asset Store 导入产物：Assets/AssetStoreTools*（含其 meta）与 *.unitypackage；不含 Unity 生成目录与 IDE 文件，需与其它模板配合。", "en": "Only Asset Store import artifacts: Assets/AssetStoreTools* (including its meta) and *.unitypackage; it contains no generated folders or IDE files, so combine it with another template." },
+  "tags": ["unity", "assetstore"],
+  "order": 130
+}

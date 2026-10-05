@@ -50,7 +50,7 @@ Unity 原生深度集成（支柱四）这一独有增量。
 | **M1** | 新包脚手架（自带 api 切包）＋ 三栏窗口骨架 + 图谱（Bek/refs/折叠）+ 行内选择联动 + git 探活 | 打开任意项目可见三栏、图谱正确、点提交右栏联动（已收口：管线引擎/表格渲染/详情/refs 标签/指纹自动刷新） |
 | **M2** | 窗口内右键菜单三语境 + Commit 流程 + 分支管理（左侧常驻面板） | 必达：窗口内右键（图谱行=提交语境、改动树=文件&目录语境、分支面板）、完整走一次提交流程（勾选→commit→自动刷新）、分支面板（过滤+checkout/新建/删除/重命名/合并/更新/推送）；**后置→M3**：Compare 内容级、rebase 非交互式（Reword/Squash/Drop；落地索引见 `docs/M2-SOLUTION.md §6`；交互式 rebase 序列编辑器→M4）、提交模板/最近消息、Uncommit、Cherry-Pick、分支级 ahead/behind、reflog 最近分支、remote 管理、标签推送。**GPG pinentry 向导→M4**（M2 的 stderr 探测 + CommitGpgHint 已是兜底）。**已收口（2026-09/2026-10）**：三语境右键、Log\|Commit Tab 提交流程（amend/signoff/no-verify + gpg 探测）、左侧常驻分支面板（分组折叠/持久化/右键动作集/上游子菜单无重命名/tag 增删）、图谱分支筛选下拉（单选，按 ref 祖先过滤）、merge 详情分节、泳道行压缩、路径归一化、箭头点击跳转；冒烟含端到端提交与分支过滤、菜单结构断言 |
 | **M3** | 承接 M2 后置全部 + 内容级 Diff/3-way：Compare 内容级 + Diff 词级高亮与 hunk 操作 + 3-way 冲突视图（ours/theirs/result，整侧接受）+ 文件历史/blame + rebase 非交互式 + Uncommit + Cherry-Pick + 提交模板/最近消息 + remote 管理 + 标签推送/远程标签 + 双击文件联动（P1 优先：remote 管理、标签推送、提交模板/最近消息、Uncommit）｜**调研定版：`docs/M3-SOLUTION.md`（2026-10：本地 git 实测 + JetBrains 源码 + doko-search 联网；词级高亮=自研行对 LCS、hunk=git apply 三态、3-way=`ls-files -u`+`show :N:`、rebase 冲突=`## HEAD (no branch)` 判定）**｜**已收口（2026-10，主线 0d5501f）**：内容级 DiffViewer（unified 单栏 + 词级 `<mark>/<s>` 高亮 + 大文件折叠）、hunk 级 stage/unstage/revert（git apply 三态，LF patch）、CompareWindow 内容级、rebase 非交互式（任务 + 冲突判定 + 分支菜单）、3-way 冲突视图（三 stage + 整侧接受 + rebase 标签对调 + 工具栏冲突徽标）、P1 四件套（remote 管理 / 标签推送・远程标签 / 提交模板+最近消息 / Uncommit）、P2（分支级 ahead-behind 徽标 / reflog 最近分支 / Cherry-Pick / blame）、双击文件联动；冒烟扩至 #39 全绿 | 可完成一次带冲突解决的真实 merge；远程操作链路（push/fetch/pull）完整可用；rebase 非交互式可完成一次变基 |
-| **M4** | 支柱四：Project 融合 + 资产语义 + 一键 ignore 模板 + 中文本地化 | 字资产层状态可见、中文 UI 完整 |
+| **M4** | 支柱四：Project 融合 + 资产语义 + 一键 ignore 模板 + 中文本地化｜**一键 ignore 模板已交付（2026-10）**：`Editor/Templates/` 三来源模板库（包内内置 / 项目共享 `.gitui-ignore-templates/` / 个人本地 `UserSettings/GitBetterGui/IgnoreTemplates/`，同名 id 高优先级整份覆盖）+ 默认合并写入（只追加缺失规则、绝不重复已有行）与覆盖+备份、写入结果预览、导出当前 .gitignore 为模板、内置 4 套（standard/minimal/ide/assetstore）、冒烟 `KF.GitUI.IgnoreTemplateSmokeTest.Run`；设计稿 `docs/M4-IGNORE-TEMPLATES.md`｜**多语言贡献框架已交付（2026-10）**：`Editor/I18n/BuiltIn/<lang>.json`（+ 可选 meta）为一门语言，三来源**键级**合并（个人 ＞ 项目 `.gitui-i18n/` ＞ 包内内置），允许部分翻译并显示覆盖率，占位符不一致的键丢弃回退英文（否则 `I18n.L(key,args)` 会抛 FormatException），语言窗口（`Window ▸ Git ▸ Language…`）切换 + 骨架导出，冒烟 `KF.GitUI.I18nSmokeTest.Run`；设计稿 `docs/M4-LOCALIZATION.md`；**zh-CN 语言包按该流程作为第一个贡献单独提交** | 字资产层状态可见、中文 UI 完整 |
 
 > 工程纪律：每个里程碑内部按"一个 PR 一种功能"拆分；图谱算法正确性管线先行，
 > 美观/性能层（Bek 二期精化、缓存）按需后置但不砍目标。
@@ -140,6 +140,8 @@ git 命令层（GitProcessTask + OutputProcessor，api 自带）→ 已解析模
 ├── Packages/
 │   └── com.<vendor>.gitui/  # UPM 包（Editor/ 代码 + Runtime 空壳/asmdef）
 │       ├── Editor/          # 三栏窗口、图谱自绘、右键菜单、Commit 面板…
+│       ├── Editor/Templates/ # 一键 ignore 模板：BuiltIn/<id>.gitignore（+ 可选 <id>.meta.json），贡献者只需丢文件
+│       ├── Editor/I18n/      # 界面多语言：BuiltIn/<lang>.json（+ 可选 <lang>.meta.json），贡献者只需丢文件
 │       ├── Editor/Api/      # git subtree 内嵌 com.spoiledcat.git.api（源=fork split/api，MIT）
 │       ├── package.json     # SPDX license 字段；无 dependencies（零依赖单包）
 │       ├── LICENSE.md

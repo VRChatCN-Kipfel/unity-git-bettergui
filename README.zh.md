@@ -51,11 +51,11 @@ _待补充 —— 欢迎贡献（M4）。_
 详见 [ROADMAP.md](ROADMAP.md)。近期社区可参与项（M4）：
 
 - **Project 资产图标** —— 在 Project 窗口展示文件 / 目录的 git 状态标记
-- **一键 ignore 模板**
-- **本地化** —— 中文优先；其余语言可通过 I18n 表贡献
+- ~~**一键 ignore 模板**~~ —— **已交付**（M4）。菜单 Window ▸ Git ▸ *Ignore Templates…*；贡献一个模板只需一个 `*.gitignore` 文件加一个可选的 `*.meta.json`，见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)
+- ~~**本地化**~~ —— **框架已交付**（M4）。菜单 Window ▸ Git ▸ *Language…*；贡献一门语言只需一个 `<lang>.json` 文件——**允许部分翻译**，界面会显示覆盖率。简体中文语言包随后就按这条流程提交。见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)
 - **side-by-side 对比** 压轴
 
-欢迎 Issue 与 PR：一个 PR 只交一类变更，鼓励小而聚焦的提交。
+欢迎 Issue 与 PR：一个 PR 只交一类变更，鼓励小而聚焦的提交。面向贡献者的模板在 [.github/](.github/)，指南见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md) / [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 

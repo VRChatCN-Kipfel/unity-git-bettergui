@@ -1,0 +1,114 @@
+name: Bug report
+description: |
+  Report a defect in the Git tool window — commit graph, changes tree, commit flow,
+  diff viewer, merge or rebase, blame, remotes.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a defect. This repository has no CI, so a
+        maintainer reproduces every report by hand. Please fill in the environment fields
+        exactly as your machine reports them — they decide whether the case is reproducible.
+
+  - type: input
+    id: unity_version
+    attributes:
+      label: Unity version
+      description: |
+        The exact editor build you ran. Unity 2022.3 LTS or newer is required.
+      placeholder: 2022.3.62f1
+    validations:
+      required: true
+
+  - type: input
+    id: package_version
+    attributes:
+      label: Package version or commit
+      description: |
+        The version in package.json (currently 0.1.0), or the commit you are on when you
+        installed the package from a git URL.
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: Operating system
+      description: |
+        Windows is the first-class platform; macOS is untested but not intentionally blocked.
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS
+        - Linux
+        - Other (describe it in the reproduction steps)
+    validations:
+      required: true
+
+  - type: input
+    id: git_version
+    attributes:
+      label: Git version
+      description: |
+        The output of `git version`. The package does not bundle git; it uses the git on
+        your PATH.
+      placeholder: git version 2.45.1.windows.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The smallest sequence that shows the defect, starting from a fresh editor launch.
+        Name the window, menu path or button you used.
+      placeholder: |
+        1. Open the host project with the package installed
+        2. Window ▸ Git (Better GUI)
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: |
+        What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: |
+        What happened instead, including any message the window or the Console showed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Lines from the Unity Console or the editor log that mention `[gitui]` (tool-window
+        diagnostics) or `[api-smoke]` (batch-mode smoke output). Paste the exact lines; if
+        there are none, write that there are none.
+      render: text
+      placeholder: |
+        [gitui] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      description: |
+        Drag an image of the tool window into this field if it helps explain the defect.
+    validations:
+      required: false

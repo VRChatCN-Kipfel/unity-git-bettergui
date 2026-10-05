@@ -1,0 +1,183 @@
+name: Contribute a language pack
+description: |
+  Offer a localization for the Git tool window — a language pack under
+  Editor/I18n/BuiltIn/, or a one-off correction to an existing pack.
+title: "[i18n] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A language contribution is **two files (the second optional) dropped into
+        `Editor/I18n/BuiltIn/`** — that is the whole format, and no C# is required.
+
+        **1. Required — `Editor/I18n/BuiltIn/<lang>.json`**
+        - a **flat** key/value map: the keys are exactly the `I18n.Keys` strings, the
+          values are your translation, UTF-8 with LF line endings;
+        - `<lang>` is a BCP-47-style code — a 2–3 letter language code, optionally
+          followed by `-` and a 2–8 letter region code — and the code **is** the file
+          name, so `zh-CN` means `Editor/I18n/BuiltIn/zh-CN.json`:
+
+        ```json
+        {
+          "ui.window.title": "Git 增强界面",
+          "ui.graph.loading": "加载中…"
+        }
+        ```
+
+        **2. Optional — `Editor/I18n/BuiltIn/<lang>.meta.json`**
+
+        ```json
+        {
+          "nativeName": "简体中文",
+          "maintainers": ["your-github-login"],
+          "order": 20
+        }
+        ```
+
+        `nativeName` is the language's own name for itself (not the English name).
+        `maintainers` is an optional list of GitHub user names, and `order` is optional —
+        a smaller value sorts earlier in the language picker. **One language has one
+        primary maintainer**, so two people do not edit the same pack at the same time and
+        drift apart on terminology.
+
+        **Partial translations are welcome.** Every key you leave out falls back to the
+        English original, and the language picker shows the coverage of each pack
+        (`ja-JP 42/203`). Ship what you have.
+
+        **Delete the keys you do not intend to translate** instead of copying the English
+        text into them — a copied value claims the key was translated and inflates the
+        coverage, so nobody can tell a deliberate choice from an oversight.
+
+        **Placeholders are a hard constraint.** Some keys carry format placeholders such
+        as `{0}` and `{1}`. For those keys you must keep the same set of indices and the
+        same format specifier per index (the `:N0` in `{0:N0}`, for example); only the
+        order may follow your language's grammar. A key that breaks either rule is
+        **discarded and falls back to English** — the window never breaks — and it is
+        reported as a problem key. A key the English table does not know at all is ignored
+        with a warning, so a pack written for an older release cannot pollute a newer one.
+
+        **You do not have to transcribe keys by hand.** The tool window can **export a
+        skeleton**: it writes a `<lang>.json` holding every key next to its English text
+        into the project-level `.gitui-i18n/` folder. Fill in the values and move the file
+        into `Editor/I18n/BuiltIn/`.
+
+        Loading priority is **per key, not per file**: a personal
+        `UserSettings/GitBetterGui/I18n/` pack beats a project-level `.gitui-i18n/` pack,
+        which beats the built-in `Editor/I18n/BuiltIn/` shipped in the package. Unlike the
+        one-click ignore templates, packs are merged key by key, so an override can carry
+        just the handful of keys you disagree with.
+
+        **Terminology.** The term table at the top of `Editor/I18n/I18n.cs` is the only
+        authority: fetch → 提取, stage → 暂存, unstage → 取消暂存, checkout → 检出,
+        branch → 分支, tag → 标签, merge → 合并, reset → 重置, stash → 贮藏,
+        remote → 远程, 2FA → 备选, index → 索引, worktree → 工作树, revert → 撤销变动,
+        commit → 提交. Keep one term per concept and keep verbs consistent.
+
+        **What cannot be translated.** Menu paths declared with
+        `[MenuItem("Window/Git/…")]` are static and Unity cannot localize them, so they
+        stay English. A "complete" localisation here means every string **inside the
+        window**; `Window ▸ Git ▸ …` is out of scope.
+
+        Verification is manual in this repository: there is no CI. A maintainer reproduces
+        your pack with
+        `Unity -batchmode -nographics -projectPath <host project path> -executeMethod KF.GitUI.I18nSmokeTest.Run -quit`,
+        which covers discovery, placeholder validation, unknown keys, coverage, priority
+        merging and skeleton export.
+
+        You can file this issue with just the answers below and let a maintainer land the
+        files.
+
+  - type: input
+    id: language_code
+    attributes:
+      label: Language code
+      description: |
+        A BCP-47-style code: a 2–3 letter language code, optionally followed by `-` and a
+        2–8 letter region code — `zh-CN`, `zh-TW`, `ja-JP`, `ko-KR`, `de-DE`, `ru-RU`.
+        The code becomes the file name, so `zh-CN` means
+        `Editor/I18n/BuiltIn/zh-CN.json`.
+      placeholder: zh-CN
+    validations:
+      required: true
+
+  - type: input
+    id: native_name
+    attributes:
+      label: Native name of the language (nativeName)
+      description: |
+        The language's own name for itself, written into `nativeName` in
+        `<lang>.meta.json` — for example `简体中文`, `日本語`, `Deutsch`. Please do not
+        put the English name here.
+      placeholder: 简体中文
+    validations:
+      required: true
+
+  - type: dropdown
+    id: maintainer_willingness
+    attributes:
+      label: Do you want to be the primary maintainer of this language?
+      description: |
+        One language has one primary maintainer, declared in the `maintainers` list of
+        `<lang>.meta.json`, so that two people do not edit the same pack at the same time
+        and drift apart on terminology.
+      options:
+        - Yes — I will maintain this language and keep it in sync when new keys appear
+        - No — I am only offering this one correction, not volunteering as maintainer
+    validations:
+      required: true
+
+  - type: textarea
+    id: coverage
+    attributes:
+      label: Coverage
+      description: |
+        How much of the pack you are offering: roughly how many keys you translated, and
+        which areas you know will keep falling back to English. The window reports this as
+        `<lang> <translated>/<total>`, for example `ja-JP 42/203`.
+      placeholder: |
+        42 of 203 keys translated. The graph tooltips and the remote dialogs still fall
+        back to English.
+    validations:
+      required: true
+
+  - type: textarea
+    id: pack_content
+    attributes:
+      label: The pack content (optional)
+      description: |
+        The exact content of `<lang>.json`, plus `<lang>.meta.json` if you have one — or
+        simply "see the pull request attachment" when you attach the files there. A flat
+        key/value map, UTF-8, LF line endings.
+      render: text
+      placeholder: |
+        {
+          "ui.window.title": "Git 增强界面",
+          "ui.graph.loading": "加载中…"
+        }
+    validations:
+      required: false
+
+  - type: dropdown
+    id: verified_in_unity
+    attributes:
+      label: Have you applied this pack in a Unity editor?
+      description: |
+        Verification means the pack sits in one of the read locations and the window
+        actually renders your text — spot-check the coverage number and every key that
+        carries a placeholder.
+      options:
+        - Yes — applied it in a Unity editor and checked the window text
+        - Yes — but only partially applied it (say what in the last field)
+        - No — not applied in Unity yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: problems
+    attributes:
+      label: Any problem you ran into (optional)
+      description: |
+        Keys the smoke run reported as discarded or unknown, a placeholder you were unsure
+        how to keep, a term you would have translated differently, and so on.
+    validations:
+      required: false

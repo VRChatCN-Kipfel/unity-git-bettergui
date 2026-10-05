@@ -1,0 +1,19 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Repository home and README
+    url: https://github.com/VRChatCN-Kipfel/unity-git-bettergui
+    about: |
+      Installation, requirements, the feature overview and the license summary.
+  - name: Roadmap (M1 to M4)
+    url: https://github.com/VRChatCN-Kipfel/unity-git-bettergui/blob/main/ROADMAP.md
+    about: |
+      Check what is already delivered and what is planned before opening a feature request.
+  - name: Contributing guide
+    url: https://github.com/VRChatCN-Kipfel/unity-git-bettergui/blob/main/CONTRIBUTING.md
+    about: |
+      Development setup, the smoke commands, commit and branch conventions, and how to
+      contribute a one-click ignore template.
+  - name: 贡献指南（简体中文）
+    url: https://github.com/VRChatCN-Kipfel/unity-git-bettergui/blob/main/CONTRIBUTING.zh.md
+    about: |
+      开发环境搭建、冒烟命令、提交消息与分支命名惯例，以及如何贡献一键 ignore 模板。

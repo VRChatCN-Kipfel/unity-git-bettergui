@@ -1,0 +1,6 @@
+# Unity Asset Store — Asset Store import artifacts only; combine with another template for generated folders.
+
+# Asset Store import artifacts
+[Aa]ssets/AssetStoreTools*
+# Delete the next line if this repo distributes .unitypackage files.
+*.unitypackage

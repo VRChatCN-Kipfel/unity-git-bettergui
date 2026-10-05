@@ -65,6 +65,26 @@ namespace KF.GitUI
         }
 
         /// <summary>
+        /// 一键 ignore 模板（M4 支柱四）。刻意独立于本窗口：它只碰项目根的 .gitignore，
+        /// 不依赖 GitSession/仓库状态，因此 git 缺失或项目未初始化时同样可用。
+        /// </summary>
+        [MenuItem("Window/Git/Ignore Templates…")]
+        public static void OpenIgnoreTemplates()
+        {
+            IgnoreTemplateWindow.Open();
+        }
+
+        /// <summary>
+        /// 界面语言（M4 多语言贡献框架）。同样不依赖 GitSession：语言包只影响界面文案。
+        /// 菜单路径本身受 Unity 限制无法本地化，窗口内文案可以。
+        /// </summary>
+        [MenuItem("Window/Git/Language…")]
+        public static void OpenLanguage()
+        {
+            LanguageWindow.Open();
+        }
+
+        /// <summary>
         /// 批处理冒烟测试：-executeMethod KF.GitUI.GitWindow.SmokeTest
         /// 验证：三栏布局 + 引擎（泳道/逐行边/行内元素）+ 真实提交加载。
         /// 测试仓库（9 提交，git log 按日期排序）：r0 810e7c4(merge y) r1 58c902b(merge x)
@@ -1384,11 +1404,32 @@ namespace KF.GitUI
 
         private void OnEnable()
         {
+            // 语言先于建界面：恢复已保存/系统语言，再按当前语言构建一遍
+            I18n.InitFromPreferences();
+            I18n.LanguageChanged += OnLanguageChanged;
+            RebuildUI();
+            EditorApplication.update += OnEditorUpdate;
+            ReloadHistory();
+        }
+
+        /// <summary>按当前语言重建整个界面（首次启用与语言切换共用同一入口）。</summary>
+        private void RebuildUI()
+        {
             rootVisualElement.Clear();
             rootVisualElement.Add(BuildLayout());
             graphTable.ContextActionProvider = ContextProvider;
-            EditorApplication.update += OnEditorUpdate;
+        }
+
+        /// <summary>
+        /// 语言切换回调：已构建的 UI 不会自己换文案，必须重建；重建后图谱数据也要重新灌一次
+        /// （BuildLayout 造的是新表）。同步执行，避免用户看到半新半旧的界面。
+        /// </summary>
+        private void OnLanguageChanged()
+        {
+            if (this == null) return;
+            RebuildUI();
             ReloadHistory();
+            Repaint();
         }
 
         private IEnumerable<IGitContextAction> ContextProvider(int row)
@@ -2537,6 +2578,14 @@ namespace KF.GitUI
             branchFilterBtn.name = "btn-branches";
             branchFilterBtn.tooltip = I18n.L(I18n.Keys.BranchFilterAll);
             toolbar.Add(branchFilterBtn);
+            // M4 支柱四：一键 ignore 模板（与仓库状态无关，独立窗口）
+            var ignoreTemplatesBtn = new Button(IgnoreTemplateWindow.Open)
+            {
+                text = I18n.L(I18n.Keys.IgnoreTemplatesButton)
+            };
+            ignoreTemplatesBtn.name = "btn-ignore-templates";
+            ignoreTemplatesBtn.tooltip = I18n.L(I18n.Keys.IgnoreTemplatesTitle);
+            toolbar.Add(ignoreTemplatesBtn);
             // M3：冲突徽标（merge/rebase 冲突时出现，点击开 3-way 视图）
             conflictBadge = new Button(OpenMerge3) { text = "" };
             conflictBadge.name = "btn-conflicts";
@@ -2839,6 +2888,7 @@ namespace KF.GitUI
         private void OnDisable()
         {
             EditorApplication.update -= OnEditorUpdate;
+            I18n.LanguageChanged -= OnLanguageChanged;
             session?.Dispose();
             session = null;
         }
